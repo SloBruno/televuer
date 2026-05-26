@@ -192,15 +192,17 @@ class TeleVuer:
             if not self.new_frame_event.wait(timeout=0.1):
                 continue
             self.new_frame_event.clear()
-            if self.latest_frame is None:
-                continue
             latest_frame = self.latest_frame
+            if latest_frame is None or not isinstance(latest_frame, np.ndarray):
+                continue
             latest_frame = cv2.cvtColor(latest_frame, cv2.COLOR_BGR2RGB)
             self.img2display[:] = latest_frame
     
     def render_to_xr(self, image):
         if self.webrtc or self.display_mode == "pass-through":
             print("[TeleVuer] Warning: render_to_xr is ignored when webrtc is enabled or pass_through is True.")
+            return
+        if image is None:
             return
         self.latest_frame = image
         self.new_frame_event.set()
