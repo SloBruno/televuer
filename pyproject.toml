@@ -16,6 +16,7 @@ dependencies = [
     "numpy<2.0.0",
     "opencv-python",
     "logging-mp",
+    "params-proto<3",
     "vuer[all]==0.0.60"
 ]
 
