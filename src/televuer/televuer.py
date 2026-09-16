@@ -90,10 +90,10 @@ class TeleVuer:
 
         self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
         self.vuer.add_handler("CAMERA_MOVE")(self.on_cam_move)
+        # Controller buttons remain available while hand tracking drives the robot.
+        self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
         if self.use_hand_tracking:
             self.vuer.add_handler("HAND_MOVE")(self.on_hand_move)
-        else:
-            self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
 
         self.display_mode = display_mode
         self.zmq = zmq
@@ -154,24 +154,23 @@ class TeleVuer:
             self.right_hand_pinchValue_shared = Value('d', 0.0, lock=True)
             self.right_hand_squeeze_shared = Value('b', False, lock=True)
             self.right_hand_squeezeValue_shared = Value('d', 0.0, lock=True)
-        else:
-            self.left_ctrl_trigger_shared = Value('b', False, lock=True)
-            self.left_ctrl_triggerValue_shared = Value('d', 0.0, lock=True)
-            self.left_ctrl_squeeze_shared = Value('b', False, lock=True)
-            self.left_ctrl_squeezeValue_shared = Value('d', 0.0, lock=True)
-            self.left_ctrl_thumbstick_shared = Value('b', False, lock=True)
-            self.left_ctrl_thumbstickValue_shared = Array('d', 2, lock=True)
-            self.left_ctrl_aButton_shared = Value('b', False, lock=True)
-            self.left_ctrl_bButton_shared = Value('b', False, lock=True)
+        self.left_ctrl_trigger_shared = Value('b', False, lock=True)
+        self.left_ctrl_triggerValue_shared = Value('d', 0.0, lock=True)
+        self.left_ctrl_squeeze_shared = Value('b', False, lock=True)
+        self.left_ctrl_squeezeValue_shared = Value('d', 0.0, lock=True)
+        self.left_ctrl_thumbstick_shared = Value('b', False, lock=True)
+        self.left_ctrl_thumbstickValue_shared = Array('d', 2, lock=True)
+        self.left_ctrl_aButton_shared = Value('b', False, lock=True)
+        self.left_ctrl_bButton_shared = Value('b', False, lock=True)
 
-            self.right_ctrl_trigger_shared = Value('b', False, lock=True)
-            self.right_ctrl_triggerValue_shared = Value('d', 0.0, lock=True)
-            self.right_ctrl_squeeze_shared = Value('b', False, lock=True)
-            self.right_ctrl_squeezeValue_shared = Value('d', 0.0, lock=True)
-            self.right_ctrl_thumbstick_shared = Value('b', False, lock=True)
-            self.right_ctrl_thumbstickValue_shared = Array('d', 2, lock=True)
-            self.right_ctrl_aButton_shared = Value('b', False, lock=True)
-            self.right_ctrl_bButton_shared = Value('b', False, lock=True)
+        self.right_ctrl_trigger_shared = Value('b', False, lock=True)
+        self.right_ctrl_triggerValue_shared = Value('d', 0.0, lock=True)
+        self.right_ctrl_squeeze_shared = Value('b', False, lock=True)
+        self.right_ctrl_squeezeValue_shared = Value('d', 0.0, lock=True)
+        self.right_ctrl_thumbstick_shared = Value('b', False, lock=True)
+        self.right_ctrl_thumbstickValue_shared = Array('d', 2, lock=True)
+        self.right_ctrl_aButton_shared = Value('b', False, lock=True)
+        self.right_ctrl_bButton_shared = Value('b', False, lock=True)
 
         self.process = Process(target=self._vuer_run)
         self.process.daemon = True
@@ -184,6 +183,7 @@ class TeleVuer:
             pass
         except Exception as e:
             print(f"Vuer encountered an error: {e}")
+            import traceback; traceback.print_exc()
         finally:
             if hasattr(self, "stop_writer_event"):
                 self.stop_writer_event.set()
@@ -262,8 +262,9 @@ class TeleVuer:
 
             extract_controllers(left_controller, "left")
             extract_controllers(right_controller, "right")
-            with self.motion_data_ready_shared.get_lock():
-                self.motion_data_ready_shared.value = True
+            if not self.use_hand_tracking:
+                with self.motion_data_ready_shared.get_lock():
+                    self.motion_data_ready_shared.value = True
         except:
             pass
 
