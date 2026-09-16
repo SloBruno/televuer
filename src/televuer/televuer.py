@@ -54,8 +54,10 @@ class TeleVuer:
 
         """
         self.use_hand_tracking = use_hand_tracking
-        # No local Vuer haptic session method is verifiable in this checkout.
-        # Keep the transport explicit and fail closed until one is available.
+        self.left_pressure_shared = Value('d', 0.0, lock=True)
+        self.right_pressure_shared = Value('d', 0.0, lock=True)
+        self.left_pressure_timestamp_shared = Value('d', 0.0, lock=True)
+        self.right_pressure_timestamp_shared = Value('d', 0.0, lock=True)
         self.haptic_transport = HapticTransportAdapter()
         self.binocular = binocular
         if img_shape is None:
@@ -211,8 +213,17 @@ class TeleVuer:
         self.new_frame_event.set()
 
     def emit_haptic(self, session, side, intensity, duration_ms=0):
-        """Attempt no haptic operation unless a verified transport is supplied."""
-        return HapticTransportAdapter(session).emit(side, intensity, duration_ms)
+        self.haptic_transport.session = session
+        return self.haptic_transport.emit(side, intensity, duration_ms)
+
+    def set_pressure_samples(self, left, right):
+        """Publish timestamped Dex3 pressure samples into the Vuer process."""
+        for side, sample in (("left", left), ("right", right)):
+            pressure, timestamp = sample
+            with getattr(self, f"{side}_pressure_shared").get_lock():
+                getattr(self, f"{side}_pressure_shared").value = float(pressure)
+            with getattr(self, f"{side}_pressure_timestamp_shared").get_lock():
+                getattr(self, f"{side}_pressure_timestamp_shared").value = float(timestamp)
 
     def close(self):
         self.process.terminate()
@@ -270,6 +281,13 @@ class TeleVuer:
 
             extract_controllers(left_controller, "left")
             extract_controllers(right_controller, "right")
+            for side in ("left", "right"):
+                with getattr(self, f"{side}_pressure_shared").get_lock():
+                    pressure = getattr(self, f"{side}_pressure_shared").value
+                with getattr(self, f"{side}_pressure_timestamp_shared").get_lock():
+                    timestamp = getattr(self, f"{side}_pressure_timestamp_shared").value
+                self.haptic_transport.session = session
+                self.haptic_transport.emit_pressure(side, pressure, timestamp)
             if not self.use_hand_tracking:
                 with self.motion_data_ready_shared.get_lock():
                     self.motion_data_ready_shared.value = True
