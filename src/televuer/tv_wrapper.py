@@ -412,7 +412,12 @@ class TeleVuerWrapper:
                 right_hand_pinchValue=self.tvuer.right_hand_pinchValue * 100.0,
                 right_hand_squeeze=self.tvuer.right_hand_squeeze,
                 right_hand_squeezeValue=self.tvuer.right_hand_squeezeValue,
-                # Quest controller buttons are also available in hand-tracking mode.
+                # Quest controller trigger/buttons are also available in hand-tracking mode.
+                # Trigger analog values retain Televuer's raw 0.0 -> 1.0 shape.
+                left_ctrl_trigger=self.tvuer.left_ctrl_trigger,
+                left_ctrl_triggerValue=self.tvuer.left_ctrl_triggerValue,
+                right_ctrl_trigger=self.tvuer.right_ctrl_trigger,
+                right_ctrl_triggerValue=self.tvuer.right_ctrl_triggerValue,
                 # WebXR maps the left secondary button to Y and the right one to B.
                 left_ctrl_bButton=self.tvuer.left_ctrl_bButton,
                 right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
