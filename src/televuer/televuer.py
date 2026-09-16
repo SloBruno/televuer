@@ -5,6 +5,7 @@ from multiprocessing import Value, Array, Process, shared_memory
 import numpy as np
 import asyncio
 import threading
+import time
 import cv2
 import os
 from pathlib import Path
@@ -145,6 +146,8 @@ class TeleVuer:
         self.left_arm_pose_shared = Array('d', 16, lock=True)
         self.right_arm_pose_shared = Array('d', 16, lock=True)
         self.motion_data_ready_shared = Value('b', False, lock=True)
+        # Monotonic timestamp of the latest complete controller sample.
+        self.controller_sample_timestamp_shared = Value('d', 0.0, lock=True)
         if self.use_hand_tracking:
             self.left_hand_position_shared = Array('d', 75, lock=True)
             self.right_hand_position_shared = Array('d', 75, lock=True)
@@ -288,9 +291,10 @@ class TeleVuer:
                     timestamp = getattr(self, f"{side}_pressure_timestamp_shared").value
                 self.haptic_transport.session = session
                 self.haptic_transport.emit_pressure(side, pressure, timestamp)
-            if not self.use_hand_tracking:
-                with self.motion_data_ready_shared.get_lock():
-                    self.motion_data_ready_shared.value = True
+            with self.controller_sample_timestamp_shared.get_lock():
+                self.controller_sample_timestamp_shared.value = time.monotonic()
+            with self.motion_data_ready_shared.get_lock():
+                self.motion_data_ready_shared.value = True
         except:
             pass
 
@@ -901,3 +905,9 @@ class TeleVuer:
         """bool, whether at least one hand or controller motion data event has been received."""
         with self.motion_data_ready_shared.get_lock():
             return self.motion_data_ready_shared.value
+
+    @property
+    def controller_sample_timestamp(self):
+        """Monotonic timestamp of the latest controller event, or 0 before one."""
+        with self.controller_sample_timestamp_shared.get_lock():
+            return self.controller_sample_timestamp_shared.value

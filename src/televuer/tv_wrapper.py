@@ -195,6 +195,7 @@ class TeleData:
     right_hand_squeezeValue: float = 0.0   # (0.0 → 1.0) degree of hand squeeze
 
     motion_data_ready: bool = False        # True after the first hand or controller motion data event is received
+    controller_sample_timestamp: float = 0.0  # monotonic timestamp of latest controller sample
     # controller tracking
     # https://docs.vuer.ai/en/latest/examples/20_motion_controllers.html
     # https://immersive-web.github.io/webxr-gamepads-module/
@@ -421,6 +422,11 @@ class TeleVuerWrapper:
                 left_ctrl_triggerValue=self.tvuer.left_ctrl_triggerValue,
                 right_ctrl_trigger=self.tvuer.right_ctrl_trigger,
                 right_ctrl_triggerValue=self.tvuer.right_ctrl_triggerValue,
+                left_ctrl_thumbstick=self.tvuer.left_ctrl_thumbstick,
+                left_ctrl_thumbstickValue=self.tvuer.left_ctrl_thumbstickValue,
+                right_ctrl_thumbstick=self.tvuer.right_ctrl_thumbstick,
+                right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
+                controller_sample_timestamp=self.tvuer.controller_sample_timestamp,
                 # WebXR maps the left secondary button to Y and the right one to B.
                 left_ctrl_bButton=self.tvuer.left_ctrl_bButton,
                 right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
@@ -463,6 +469,7 @@ class TeleVuerWrapper:
                 right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
                 right_ctrl_thumbstick=self.tvuer.right_ctrl_thumbstick,
                 right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
+                controller_sample_timestamp=self.tvuer.controller_sample_timestamp,
             )
         
     def render_to_xr(self, img):
