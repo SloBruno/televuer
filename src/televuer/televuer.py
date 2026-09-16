@@ -359,6 +359,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
         else:
             session.upsert(
                 MotionControllers(
@@ -414,6 +423,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
         else:
             session.upsert(
                 MotionControllers(
@@ -454,6 +472,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
         else:
             session.upsert(
                 MotionControllers(
@@ -491,6 +518,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
         else:
             session.upsert(
                 MotionControllers(
@@ -525,6 +561,15 @@ class TeleVuer:
                     key="hands",
                     hideLeft=True,
                     hideRight=True
+                ),
+                to="bgChildren",
+            )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
                 ),
                 to="bgChildren",
             )
@@ -583,6 +628,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
         else:
             session.upsert(
                 MotionControllers(
@@ -623,6 +677,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
         else:
             session.upsert(
                 MotionControllers(
@@ -660,6 +723,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
+                ),
+                to="bgChildren",
+            )
         else:
             session.upsert(
                 MotionControllers(
@@ -694,6 +766,15 @@ class TeleVuer:
                     key="hands",
                     hideLeft=True,
                     hideRight=True
+                ),
+                to="bgChildren",
+            )
+            session.upsert(
+                MotionControllers(
+                    stream=True,
+                    key="motionControllers",
+                    left=True,
+                    right=True,
                 ),
                 to="bgChildren",
             )
