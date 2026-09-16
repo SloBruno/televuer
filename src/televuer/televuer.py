@@ -1,5 +1,6 @@
 from vuer import Vuer
 from vuer.schemas import ImageBackground, Hands, MotionControllers, WebRTCVideoPlane, WebRTCStereoVideoPlane
+from teleop.utils.haptics import HapticTransportAdapter
 from multiprocessing import Value, Array, Process, shared_memory
 import numpy as np
 import asyncio
@@ -53,6 +54,9 @@ class TeleVuer:
 
         """
         self.use_hand_tracking = use_hand_tracking
+        # No local Vuer haptic session method is verifiable in this checkout.
+        # Keep the transport explicit and fail closed until one is available.
+        self.haptic_transport = HapticTransportAdapter()
         self.binocular = binocular
         if img_shape is None:
             raise ValueError("[TeleVuer] img_shape must be provided.")
@@ -205,6 +209,10 @@ class TeleVuer:
             return
         self.latest_frame = image
         self.new_frame_event.set()
+
+    def emit_haptic(self, session, side, intensity, duration_ms=0):
+        """Attempt no haptic operation unless a verified transport is supplied."""
+        return HapticTransportAdapter(session).emit(side, intensity, duration_ms)
 
     def close(self):
         self.process.terminate()

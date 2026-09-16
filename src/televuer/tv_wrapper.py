@@ -1,5 +1,6 @@
 import numpy as np
 from .televuer import TeleVuer
+from teleop.utils.haptics import HapticTransportAdapter
 from dataclasses import dataclass, field
 from typing import Literal
 """
@@ -280,6 +281,7 @@ class TeleVuerWrapper:
         self.tvuer = TeleVuer(use_hand_tracking=use_hand_tracking, binocular=binocular, img_shape=img_shape, display_fps=display_fps,
                               display_mode=display_mode, zmq=zmq, webrtc=webrtc, webrtc_url=webrtc_url, 
                               cert_file=cert_file, key_file=key_file)
+        self.haptic_transport = HapticTransportAdapter()
         
     def get_tele_data(self):
         """
