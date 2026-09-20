@@ -143,8 +143,13 @@ class TeleVuer:
         self.vuer.spawn(start=False)(fn)
 
         self.head_pose_shared = Array('d', 16, lock=True)
-        self.left_arm_pose_shared = Array('d', 16, lock=True)
-        self.right_arm_pose_shared = Array('d', 16, lock=True)
+        # Keep hand-skeleton and controller pose streams separate. In mixed
+        # mode both events arrive, and sharing one buffer makes the arm target
+        # depend on whichever browser event happened last.
+        self.left_hand_arm_pose_shared = Array('d', 16, lock=True)
+        self.right_hand_arm_pose_shared = Array('d', 16, lock=True)
+        self.left_controller_arm_pose_shared = Array('d', 16, lock=True)
+        self.right_controller_arm_pose_shared = Array('d', 16, lock=True)
         self.motion_data_ready_shared = Value('b', False, lock=True)
         # Monotonic timestamp of the latest complete controller sample.
         self.controller_sample_timestamp_shared = Value('d', 0.0, lock=True)
@@ -251,11 +256,11 @@ class TeleVuer:
     async def on_controller_move(self, event, session, fps=60):
         """https://docs.vuer.ai/en/latest/examples/20_motion_controllers.html"""
         try:
-            # ControllerData
-            with self.left_arm_pose_shared.get_lock():
-                self.left_arm_pose_shared[:] = event.value["left"]
-            with self.right_arm_pose_shared.get_lock():
-                self.right_arm_pose_shared[:] = event.value["right"]
+            # ControllerData remains independent from hand-skeleton poses.
+            with self.left_controller_arm_pose_shared.get_lock():
+                self.left_controller_arm_pose_shared[:] = event.value["left"]
+            with self.right_controller_arm_pose_shared.get_lock():
+                self.right_controller_arm_pose_shared[:] = event.value["right"]
             # ControllerState
             left_controller = event.value["leftState"]
             right_controller = event.value["rightState"]
@@ -337,8 +342,8 @@ class TeleVuer:
                 with getattr(self, f"{prefix}_hand_squeezeValue_shared").get_lock():
                     getattr(self, f"{prefix}_hand_squeezeValue_shared").value = float(handState.get("squeezeValue", 0.0))
 
-            extract_hand_poses(left_hand_data, self.left_arm_pose_shared, self.left_hand_position_shared, self.left_hand_orientation_shared)
-            extract_hand_poses(right_hand_data, self.right_arm_pose_shared, self.right_hand_position_shared, self.right_hand_orientation_shared)
+            extract_hand_poses(left_hand_data, self.left_hand_arm_pose_shared, self.left_hand_position_shared, self.left_hand_orientation_shared)
+            extract_hand_poses(right_hand_data, self.right_hand_arm_pose_shared, self.right_hand_position_shared, self.right_hand_orientation_shared)
             extract_hands(left_hand, "left")
             extract_hands(right_hand, "right")
             with self.motion_data_ready_shared.get_lock():
@@ -800,16 +805,38 @@ class TeleVuer:
             return np.array(self.head_pose_shared[:]).reshape(4, 4, order="F")
 
     @property
+    def left_hand_arm_pose(self):
+        """Left hand-skeleton wrist pose in the OpenXR world frame."""
+        with self.left_hand_arm_pose_shared.get_lock():
+            return np.array(self.left_hand_arm_pose_shared[:]).reshape(4, 4, order="F")
+
+    @property
+    def right_hand_arm_pose(self):
+        """Right hand-skeleton wrist pose in the OpenXR world frame."""
+        with self.right_hand_arm_pose_shared.get_lock():
+            return np.array(self.right_hand_arm_pose_shared[:]).reshape(4, 4, order="F")
+
+    @property
+    def left_controller_arm_pose(self):
+        """Left Quest-controller pose in the OpenXR world frame."""
+        with self.left_controller_arm_pose_shared.get_lock():
+            return np.array(self.left_controller_arm_pose_shared[:]).reshape(4, 4, order="F")
+
+    @property
+    def right_controller_arm_pose(self):
+        """Right Quest-controller pose in the OpenXR world frame."""
+        with self.right_controller_arm_pose_shared.get_lock():
+            return np.array(self.right_controller_arm_pose_shared[:]).reshape(4, 4, order="F")
+
+    @property
     def left_arm_pose(self):
-        """np.ndarray, shape (4, 4), left arm SE(3) pose matrix from Vuer (basis OpenXR Convention)."""
-        with self.left_arm_pose_shared.get_lock():
-            return np.array(self.left_arm_pose_shared[:]).reshape(4, 4, order="F")
+        """Legacy selected arm pose, retained for callers that do not select a source."""
+        return self.left_hand_arm_pose if self.use_hand_tracking else self.left_controller_arm_pose
 
     @property
     def right_arm_pose(self):
-        """np.ndarray, shape (4, 4), right arm SE(3) pose matrix from Vuer (basis OpenXR Convention)."""
-        with self.right_arm_pose_shared.get_lock():
-            return np.array(self.right_arm_pose_shared[:]).reshape(4, 4, order="F")
+        """Legacy selected arm pose, retained for callers that do not select a source."""
+        return self.right_hand_arm_pose if self.use_hand_tracking else self.right_controller_arm_pose
 
     # ==================== Hand Tracking Data ====================
     @property

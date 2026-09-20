@@ -1,4 +1,5 @@
 import numpy as np
+from .arm_pose_source import select_arm_pose_samples
 from .televuer import TeleVuer
 from dataclasses import dataclass, field
 from typing import Literal
@@ -228,9 +229,10 @@ class TeleData:
 
 class TeleVuerWrapper:
     def __init__(self, use_hand_tracking: bool, binocular: bool=True, img_shape: tuple=(480, 1280), display_fps: float=30.0,
-                       display_mode: Literal["immersive", "pass-through", "ego"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
+                       display_mode: Literal["immersive", "pass-through", "ego"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None,
                        cert_file: str=None, key_file: str=None, return_hand_rot_data: bool=False,
-                       arm_reference_mode: Literal["head_position", "head_yaw"]="head_yaw"):
+                       arm_reference_mode: Literal["head_position", "head_yaw"]="head_yaw",
+                       arm_pose_source: Literal["hand", "controller"]="hand"):
         """
         TeleVuerWrapper is a wrapper for the TeleVuer class, which handles XR device's data suit for robot control.
         It initializes the TeleVuer instance with the specified parameters and provides a method to get motion state data.
@@ -249,6 +251,9 @@ class TeleVuerWrapper:
         :param arm_reference_mode: str, controls how wrist poses are expressed for IK.
             * "head_position": transfer from WORLD to HEAD with translation adjustment only.
             * "head_yaw": default mode; transfer from WORLD to HEAD with R_Brobot_world_head_yaw^T, ignoring pitch/roll.
+        :param arm_pose_source: source of wrist targets for arm IK. "controller"
+            keeps Dex3 fingers trigger-only while arm position/orientation follows
+            the tracked Quest controllers.
 
         Note:
 
@@ -275,9 +280,12 @@ class TeleVuerWrapper:
             raise ValueError(f"[TeleVuerWrapper] Unknown display_mode: {display_mode}")
         if arm_reference_mode not in ("head_position", "head_yaw"):
             raise ValueError(f"[TeleVuerWrapper] Unknown arm_reference_mode: {arm_reference_mode}")
+        if arm_pose_source not in ("hand", "controller"):
+            raise ValueError(f"[TeleVuerWrapper] Unknown arm_pose_source: {arm_pose_source}")
         self.use_hand_tracking = use_hand_tracking
         self.return_hand_rot_data = return_hand_rot_data
         self.arm_reference_mode = arm_reference_mode
+        self.arm_pose_source = arm_pose_source
         self.tvuer = TeleVuer(use_hand_tracking=use_hand_tracking, binocular=binocular, img_shape=img_shape, display_fps=display_fps,
                               display_mode=display_mode, zmq=zmq, webrtc=webrtc, webrtc_url=webrtc_url, 
                               cert_file=cert_file, key_file=key_file)
@@ -306,35 +314,40 @@ class TeleVuerWrapper:
         # TeleVuer (Vuer) obtains all raw data under the (basis) OpenXR Convention.
         Bxr_world_head, head_pose_is_valid = safe_mat_update(CONST_HEAD_POSE, self.tvuer.head_pose)
 
-        # hand tracking
+        # Hand tracking may remain enabled for XR rendering, but arm IK can take
+        # its pose exclusively from the Quest controllers.
         if self.use_hand_tracking:
-            # 'Arm' pose data follows (basis) OpenXR Convention and (initial pose) OpenXR Arm Convention.
-            left_IPxr_Bxr_world_arm, left_arm_is_valid  = safe_mat_update(CONST_LEFT_ARM_POSE, self.tvuer.left_arm_pose)
-            right_IPxr_Bxr_world_arm, right_arm_is_valid = safe_mat_update(CONST_RIGHT_ARM_POSE, self.tvuer.right_arm_pose)
+            left_hand_pose_for_retargeting = self.tvuer.left_hand_arm_pose
+            right_hand_pose_for_retargeting = self.tvuer.right_hand_arm_pose
+            (
+                left_raw_arm_pose,
+                right_raw_arm_pose,
+                arm_source_uses_openxr_hand_convention,
+            ) = select_arm_pose_samples(
+                arm_pose_source=self.arm_pose_source,
+                left_hand_pose=left_hand_pose_for_retargeting,
+                right_hand_pose=right_hand_pose_for_retargeting,
+                left_controller_pose=self.tvuer.left_controller_arm_pose,
+                right_controller_pose=self.tvuer.right_controller_arm_pose,
+            )
+            left_raw_arm_pose, left_arm_is_valid = safe_mat_update(CONST_LEFT_ARM_POSE, left_raw_arm_pose)
+            right_raw_arm_pose, right_arm_is_valid = safe_mat_update(CONST_RIGHT_ARM_POSE, right_raw_arm_pose)
 
-            # Change basis convention
-            # From (basis) OpenXR Convention to (basis) Robot Convention:
-            #   Brobot_Pose = T_{robot}_{openxr} * Bxr_Pose * T_{robot}_{openxr}^T  ==>
-            #   Brobot_Pose = T_{robot}_{openxr} * Bxr_Pose * T_{openxr}_{robot}
-            # Reason for right multiply T_OPENXR_ROBOT = fast_mat_inv(T_ROBOT_OPENXR):
-            #   This is similarity transformation: B = PAP^{-1}, that is B ~ A
-            #   For example:
-            #   - For a pose data T_r under the (basis) Robot Convention, left-multiplying Brobot_Pose means:
-            #       Brobot_Pose * T_r  ==>  T_{robot}_{openxr} * PoseMatrix_openxr * T_{openxr}_{robot} * T_r
-            #   - First, transform T_r to the (basis) OpenXR Convention (The function of T_{openxr}_{robot})
-            #   - Then, apply the rotation PoseMatrix_openxr in the OpenXR Convention (The function of PoseMatrix_openxr)
-            #   - Finally, transform back to the Robot Convention (The function of T_{robot}_{openxr})
-            #   - This results in the same rotation effect under the Robot Convention as in the OpenXR Convention.
+            # Change basis convention from OpenXR WORLD to robot WORLD.
             Brobot_world_head = T_ROBOT_OPENXR @ Bxr_world_head @ T_OPENXR_ROBOT
-            left_IPxr_Brobot_world_arm  = T_ROBOT_OPENXR @ left_IPxr_Bxr_world_arm @ T_OPENXR_ROBOT
-            right_IPxr_Brobot_world_arm = T_ROBOT_OPENXR @ right_IPxr_Bxr_world_arm @ T_OPENXR_ROBOT
+            left_IPxr_Brobot_world_arm = T_ROBOT_OPENXR @ left_raw_arm_pose @ T_OPENXR_ROBOT
+            right_IPxr_Brobot_world_arm = T_ROBOT_OPENXR @ right_raw_arm_pose @ T_OPENXR_ROBOT
 
-            # Change initial pose convention 
-            # From (initial pose) OpenXR Arm Convention to (initial pose) Unitree Humanoid Arm URDF Convention
-            # Reason for right multiply (T_TO_UNITREE_HUMANOID_LEFT_ARM) : Rotate 90 degrees counterclockwise about its own x-axis.
-            # Reason for right multiply (T_TO_UNITREE_HUMANOID_RIGHT_ARM): Rotate 90 degrees clockwise about its own x-axis.
-            left_IPunitree_Brobot_world_arm = left_IPxr_Brobot_world_arm @ (T_TO_UNITREE_HUMANOID_LEFT_ARM if left_arm_is_valid else np.eye(4))
-            right_IPunitree_Brobot_world_arm = right_IPxr_Brobot_world_arm @ (T_TO_UNITREE_HUMANOID_RIGHT_ARM if right_arm_is_valid else np.eye(4))
+            # Hand skeleton poses need the OpenXR-to-Unitree initial-pose
+            # conversion; controller poses already use Unitree's arm convention.
+            if arm_source_uses_openxr_hand_convention:
+                left_IPunitree_Brobot_world_arm = left_IPxr_Brobot_world_arm @ (
+                    T_TO_UNITREE_HUMANOID_LEFT_ARM if left_arm_is_valid else np.eye(4))
+                right_IPunitree_Brobot_world_arm = right_IPxr_Brobot_world_arm @ (
+                    T_TO_UNITREE_HUMANOID_RIGHT_ARM if right_arm_is_valid else np.eye(4))
+            else:
+                left_IPunitree_Brobot_world_arm = left_IPxr_Brobot_world_arm
+                right_IPunitree_Brobot_world_arm = right_IPxr_Brobot_world_arm
 
             # =====coordinate origin offset=====
             # The origin of the coordinate for IK Solve is near the WAIST joint motor. You can use teleop/robot_control/robot_arm_ik.py Unit_Test to visualize it.
@@ -388,8 +401,8 @@ class TeleVuerWrapper:
                 right_Bxr_world_hand_rot, right_hand_rot_is_valid = safe_rot_update(CONST_HAND_ROT, self.tvuer.right_hand_orientations)
 
                 if left_hand_rot_is_valid and right_hand_rot_is_valid:
-                    left_Bxr_arm_hand_rot = np.einsum('ij,njk->nik', left_IPxr_Bxr_world_arm[:3, :3].T, left_Bxr_world_hand_rot)
-                    right_Bxr_arm_hand_rot = np.einsum('ij,njk->nik', right_IPxr_Bxr_world_arm[:3, :3].T, right_Bxr_world_hand_rot)
+                    left_Bxr_arm_hand_rot = np.einsum('ij,njk->nik', left_hand_pose_for_retargeting[:3, :3].T, left_Bxr_world_hand_rot)
+                    right_Bxr_arm_hand_rot = np.einsum('ij,njk->nik', right_hand_pose_for_retargeting[:3, :3].T, right_Bxr_world_hand_rot)
                     # Change basis convention
                     left_Brobot_arm_hand_rot = np.einsum('ij,njk,kl->nil', R_ROBOT_OPENXR, left_Bxr_arm_hand_rot, R_OPENXR_ROBOT)
                     right_Brobot_arm_hand_rot = np.einsum('ij,njk,kl->nil', R_ROBOT_OPENXR, right_Bxr_arm_hand_rot, R_OPENXR_ROBOT)
