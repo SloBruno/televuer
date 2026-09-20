@@ -313,6 +313,11 @@ class TeleVuerWrapper:
 
         # TeleVuer (Vuer) obtains all raw data under the (basis) OpenXR Convention.
         Bxr_world_head, head_pose_is_valid = safe_mat_update(CONST_HEAD_POSE, self.tvuer.head_pose)
+        (
+            left_controller_pose,
+            right_controller_pose,
+            controller_sample_timestamp,
+        ) = self.tvuer.controller_pose_sample
 
         # Hand tracking may remain enabled for XR rendering, but arm IK can take
         # its pose exclusively from the Quest controllers.
@@ -327,8 +332,8 @@ class TeleVuerWrapper:
                 arm_pose_source=self.arm_pose_source,
                 left_hand_pose=left_hand_pose_for_retargeting,
                 right_hand_pose=right_hand_pose_for_retargeting,
-                left_controller_pose=self.tvuer.left_controller_arm_pose,
-                right_controller_pose=self.tvuer.right_controller_arm_pose,
+                left_controller_pose=left_controller_pose,
+                right_controller_pose=right_controller_pose,
             )
             left_raw_arm_pose, left_arm_is_valid = safe_mat_update(CONST_LEFT_ARM_POSE, left_raw_arm_pose)
             right_raw_arm_pose, right_arm_is_valid = safe_mat_update(CONST_RIGHT_ARM_POSE, right_raw_arm_pose)
@@ -439,7 +444,7 @@ class TeleVuerWrapper:
                 left_ctrl_thumbstickValue=self.tvuer.left_ctrl_thumbstickValue,
                 right_ctrl_thumbstick=self.tvuer.right_ctrl_thumbstick,
                 right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
-                controller_sample_timestamp=self.tvuer.controller_sample_timestamp,
+                controller_sample_timestamp=controller_sample_timestamp,
                 # WebXR maps the left secondary button to Y and the right one to B.
                 left_ctrl_bButton=self.tvuer.left_ctrl_bButton,
                 right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
@@ -482,7 +487,7 @@ class TeleVuerWrapper:
                 right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
                 right_ctrl_thumbstick=self.tvuer.right_ctrl_thumbstick,
                 right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
-                controller_sample_timestamp=self.tvuer.controller_sample_timestamp,
+                controller_sample_timestamp=controller_sample_timestamp,
             )
         
     def render_to_xr(self, img):

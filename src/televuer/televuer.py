@@ -1,6 +1,11 @@
 from vuer import Vuer
 from vuer.schemas import ImageBackground, Hands, MotionControllers, WebRTCVideoPlane, WebRTCStereoVideoPlane
 from teleop.utils.haptics import HapticTransportAdapter
+from .controller_pose_sample import (
+    CONTROLLER_POSE_SAMPLE_SIZE,
+    read_controller_pose_sample,
+    write_controller_pose_sample,
+)
 from multiprocessing import Value, Array, Process, shared_memory
 import numpy as np
 import asyncio
@@ -148,11 +153,11 @@ class TeleVuer:
         # depend on whichever browser event happened last.
         self.left_hand_arm_pose_shared = Array('d', 16, lock=True)
         self.right_hand_arm_pose_shared = Array('d', 16, lock=True)
-        self.left_controller_arm_pose_shared = Array('d', 16, lock=True)
-        self.right_controller_arm_pose_shared = Array('d', 16, lock=True)
+        # [left 4x4, right 4x4, monotonic timestamp] is published as one
+        # atomic sample so IK cannot combine fields from different events.
+        self.controller_pose_sample_shared = Array(
+            'd', CONTROLLER_POSE_SAMPLE_SIZE, lock=True)
         self.motion_data_ready_shared = Value('b', False, lock=True)
-        # Monotonic timestamp of the latest complete controller sample.
-        self.controller_sample_timestamp_shared = Value('d', 0.0, lock=True)
         if self.use_hand_tracking:
             self.left_hand_position_shared = Array('d', 75, lock=True)
             self.right_hand_position_shared = Array('d', 75, lock=True)
@@ -256,11 +261,13 @@ class TeleVuer:
     async def on_controller_move(self, event, session, fps=60):
         """https://docs.vuer.ai/en/latest/examples/20_motion_controllers.html"""
         try:
-            # ControllerData remains independent from hand-skeleton poses.
-            with self.left_controller_arm_pose_shared.get_lock():
-                self.left_controller_arm_pose_shared[:] = event.value["left"]
-            with self.right_controller_arm_pose_shared.get_lock():
-                self.right_controller_arm_pose_shared[:] = event.value["right"]
+            # Commit the complete controller-pose pair and timestamp together.
+            write_controller_pose_sample(
+                self.controller_pose_sample_shared,
+                event.value["left"],
+                event.value["right"],
+                time.monotonic(),
+            )
             # ControllerState
             left_controller = event.value["leftState"]
             right_controller = event.value["rightState"]
@@ -296,8 +303,6 @@ class TeleVuer:
                     timestamp = getattr(self, f"{side}_pressure_timestamp_shared").value
                 self.haptic_transport.session = session
                 self.haptic_transport.emit_pressure(side, pressure, timestamp)
-            with self.controller_sample_timestamp_shared.get_lock():
-                self.controller_sample_timestamp_shared.value = time.monotonic()
             with self.motion_data_ready_shared.get_lock():
                 self.motion_data_ready_shared.value = True
         except:
@@ -817,16 +822,19 @@ class TeleVuer:
             return np.array(self.right_hand_arm_pose_shared[:]).reshape(4, 4, order="F")
 
     @property
+    def controller_pose_sample(self):
+        """Atomic (left pose, right pose, monotonic timestamp) controller sample."""
+        return read_controller_pose_sample(self.controller_pose_sample_shared)
+
+    @property
     def left_controller_arm_pose(self):
-        """Left Quest-controller pose in the OpenXR world frame."""
-        with self.left_controller_arm_pose_shared.get_lock():
-            return np.array(self.left_controller_arm_pose_shared[:]).reshape(4, 4, order="F")
+        """Left pose from the latest atomic controller sample."""
+        return self.controller_pose_sample[0]
 
     @property
     def right_controller_arm_pose(self):
-        """Right Quest-controller pose in the OpenXR world frame."""
-        with self.right_controller_arm_pose_shared.get_lock():
-            return np.array(self.right_controller_arm_pose_shared[:]).reshape(4, 4, order="F")
+        """Right pose from the latest atomic controller sample."""
+        return self.controller_pose_sample[1]
 
     @property
     def left_arm_pose(self):
@@ -1016,6 +1024,5 @@ class TeleVuer:
 
     @property
     def controller_sample_timestamp(self):
-        """Monotonic timestamp of the latest controller event, or 0 before one."""
-        with self.controller_sample_timestamp_shared.get_lock():
-            return self.controller_sample_timestamp_shared.value
+        """Timestamp from the latest atomic controller pose sample, or 0 before one."""
+        return self.controller_pose_sample[2]
