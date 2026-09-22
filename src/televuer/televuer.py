@@ -6,6 +6,11 @@ from .controller_pose_sample import (
     read_controller_pose_sample,
     write_controller_pose_sample,
 )
+from .hand_pose_sample import (
+    HAND_POSE_SAMPLE_SIZE,
+    read_hand_pose_sample,
+    write_hand_pose_sample,
+)
 from multiprocessing import Value, Array, Process, shared_memory
 import numpy as np
 import asyncio
@@ -153,6 +158,9 @@ class TeleVuer:
         # depend on whichever browser event happened last.
         self.left_hand_arm_pose_shared = Array('d', 16, lock=True)
         self.right_hand_arm_pose_shared = Array('d', 16, lock=True)
+        # [left 4x4, right 4x4, monotonic timestamp] is published as one
+        # atomic sample so IK cannot combine hand poses from different events.
+        self.hand_pose_sample_shared = Array('d', HAND_POSE_SAMPLE_SIZE, lock=True)
         # [left 4x4, right 4x4, monotonic timestamp] is published as one
         # atomic sample so IK cannot combine fields from different events.
         self.controller_pose_sample_shared = Array(
@@ -316,6 +324,13 @@ class TeleVuer:
             right_hand_data = event.value["right"]
             left_hand = event.value["leftState"]
             right_hand = event.value["rightState"]
+            # Commit the complete hand wrist pair and timestamp together.
+            write_hand_pose_sample(
+                self.hand_pose_sample_shared,
+                left_hand_data[0:16],
+                right_hand_data[0:16],
+                time.monotonic(),
+            )
             # HandState
             def extract_hand_poses(hand_data, arm_pose_shared, hand_position_shared, hand_orientation_shared):
                 with arm_pose_shared.get_lock():
@@ -810,16 +825,24 @@ class TeleVuer:
             return np.array(self.head_pose_shared[:]).reshape(4, 4, order="F")
 
     @property
+    def hand_pose_sample(self):
+        """Atomic (left pose, right pose, monotonic timestamp) hand wrist sample."""
+        return read_hand_pose_sample(self.hand_pose_sample_shared)
+
+    @property
     def left_hand_arm_pose(self):
         """Left hand-skeleton wrist pose in the OpenXR world frame."""
-        with self.left_hand_arm_pose_shared.get_lock():
-            return np.array(self.left_hand_arm_pose_shared[:]).reshape(4, 4, order="F")
+        return self.hand_pose_sample[0]
 
     @property
     def right_hand_arm_pose(self):
         """Right hand-skeleton wrist pose in the OpenXR world frame."""
-        with self.right_hand_arm_pose_shared.get_lock():
-            return np.array(self.right_hand_arm_pose_shared[:]).reshape(4, 4, order="F")
+        return self.hand_pose_sample[1]
+
+    @property
+    def hand_sample_timestamp(self):
+        """Timestamp from the latest atomic hand wrist sample, or 0 before one."""
+        return self.hand_pose_sample[2]
 
     @property
     def controller_pose_sample(self):

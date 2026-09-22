@@ -196,6 +196,7 @@ class TeleData:
     right_hand_squeezeValue: float = 0.0   # (0.0 → 1.0) degree of hand squeeze
 
     motion_data_ready: bool = False        # True after the first hand or controller motion data event is received
+    hand_sample_timestamp: float = 0.0        # monotonic timestamp of latest hand wrist-pose pair
     controller_sample_timestamp: float = 0.0  # monotonic timestamp of latest controller sample
     # controller tracking
     # https://docs.vuer.ai/en/latest/examples/20_motion_controllers.html
@@ -314,6 +315,11 @@ class TeleVuerWrapper:
         # TeleVuer (Vuer) obtains all raw data under the (basis) OpenXR Convention.
         Bxr_world_head, head_pose_is_valid = safe_mat_update(CONST_HEAD_POSE, self.tvuer.head_pose)
         (
+            left_hand_pose_for_retargeting,
+            right_hand_pose_for_retargeting,
+            hand_sample_timestamp,
+        ) = self.tvuer.hand_pose_sample
+        (
             left_controller_pose,
             right_controller_pose,
             controller_sample_timestamp,
@@ -322,8 +328,6 @@ class TeleVuerWrapper:
         # Hand tracking may remain enabled for XR rendering, but arm IK can take
         # its pose exclusively from the Quest controllers.
         if self.use_hand_tracking:
-            left_hand_pose_for_retargeting = self.tvuer.left_hand_arm_pose
-            right_hand_pose_for_retargeting = self.tvuer.right_hand_arm_pose
             (
                 left_raw_arm_pose,
                 right_raw_arm_pose,
@@ -445,6 +449,7 @@ class TeleVuerWrapper:
                 right_ctrl_thumbstick=self.tvuer.right_ctrl_thumbstick,
                 right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
                 controller_sample_timestamp=controller_sample_timestamp,
+                hand_sample_timestamp=hand_sample_timestamp,
                 # WebXR maps the left secondary button to Y and the right one to B.
                 left_ctrl_bButton=self.tvuer.left_ctrl_bButton,
                 right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
