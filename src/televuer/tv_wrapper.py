@@ -450,7 +450,8 @@ class TeleVuerWrapper:
                 right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
                 controller_sample_timestamp=controller_sample_timestamp,
                 hand_sample_timestamp=hand_sample_timestamp,
-                # WebXR maps the left secondary button to Y and the right one to B.
+                # Preserve right-controller lifecycle buttons in hand-tracking mode.
+                right_ctrl_aButton=self.tvuer.right_ctrl_aButton,
                 left_ctrl_bButton=self.tvuer.left_ctrl_bButton,
                 right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
             )
