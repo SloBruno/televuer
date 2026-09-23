@@ -1,17 +1,43 @@
-"""Atomic controller-pose sample handoff for arm IK."""
+"""Atomic validated controller-pose sample handoff for arm IK."""
 
 import numpy as np
 
 
 CONTROLLER_POSE_SAMPLE_SIZE = 33  # left 4x4, right 4x4, monotonic timestamp
+_SE3_ATOL = 1e-5
+
+
+def is_valid_controller_pose(pose) -> bool:
+    """Return whether ``pose`` is a finite rigid 4x4 homogeneous transform."""
+    try:
+        matrix = np.asarray(pose, dtype=float).reshape(4, 4, order="F")
+    except (TypeError, ValueError):
+        return False
+    if not np.isfinite(matrix).all():
+        return False
+    if not np.allclose(matrix[3], (0.0, 0.0, 0.0, 1.0), atol=_SE3_ATOL):
+        return False
+    rotation = matrix[:3, :3]
+    return (
+        np.allclose(rotation.T @ rotation, np.eye(3), atol=_SE3_ATOL)
+        and np.isclose(np.linalg.det(rotation), 1.0, atol=_SE3_ATOL)
+    )
 
 
 def write_controller_pose_sample(shared, left_pose, right_pose, timestamp):
-    """Publish a left/right controller pose pair and timestamp under one lock."""
+    """Atomically publish a valid pair; invalid input leaves freshness unchanged."""
+    if not (
+        is_valid_controller_pose(left_pose)
+        and is_valid_controller_pose(right_pose)
+    ):
+        return False
+    if not np.isfinite(timestamp) or float(timestamp) <= 0.0:
+        return False
     with shared.get_lock():
         shared[:16] = np.asarray(left_pose, dtype=float).reshape(16, order="F")
         shared[16:32] = np.asarray(right_pose, dtype=float).reshape(16, order="F")
         shared[32] = float(timestamp)
+    return True
 
 
 def read_controller_pose_sample(shared):
