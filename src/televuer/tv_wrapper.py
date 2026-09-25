@@ -474,21 +474,30 @@ class TeleVuerWrapper:
             )
         # controller tracking
         else:
-            # Controller pose data directly follows the (initial pose) Unitree Humanoid Arm URDF Convention (thus no transform is needed).
-            left_IPunitree_Bxr_world_arm, left_arm_is_valid  = safe_mat_update(CONST_LEFT_ARM_POSE, self.tvuer.left_arm_pose)
-            right_IPunitree_Bxr_world_arm, right_arm_is_valid = safe_mat_update(CONST_RIGHT_ARM_POSE, self.tvuer.right_arm_pose)
+            # Controller poses come from the same atomic world-frame sample as
+            # the mixed hand/controller path.  Do not derive arm targets from
+            # the live headset pose: headset motion must not move a stationary
+            # controller target.
+            left_IPunitree_Bxr_world_arm, left_arm_is_valid = safe_mat_update(
+                CONST_LEFT_ARM_POSE, left_controller_pose
+            )
+            right_IPunitree_Bxr_world_arm, right_arm_is_valid = safe_mat_update(
+                CONST_RIGHT_ARM_POSE, right_controller_pose
+            )
 
             # Change basis convention
             Brobot_world_head = T_ROBOT_OPENXR @ Bxr_world_head @ T_OPENXR_ROBOT
             left_IPunitree_Brobot_world_arm  = T_ROBOT_OPENXR @ left_IPunitree_Bxr_world_arm @ T_OPENXR_ROBOT
             right_IPunitree_Brobot_world_arm = T_ROBOT_OPENXR @ right_IPunitree_Bxr_world_arm @ T_OPENXR_ROBOT
 
-            # =====coordinate origin offset=====
-            # The origin of the coordinate for IK Solve is near the WAIST joint motor. You can use teleop/robot_control/robot_arm_ik.py Unit_Test to check it.
-            # Transfer IPunitree_Brobot_world_arm to IPunitree_Brobot_head_arm first, then translate the origin from HEAD to WAIST.
-            # "head_yaw" additionally left-multiplies R_Brobot_world_head_yaw^T, ignoring pitch/roll.
-            left_IPunitree_Brobot_waist_arm = transform_IPunitree_Brobot_world_arm_to_head_then_waist(left_IPunitree_Brobot_world_arm, Brobot_world_head, self.arm_reference_mode)
-            right_IPunitree_Brobot_waist_arm = transform_IPunitree_Brobot_world_arm_to_head_then_waist(right_IPunitree_Brobot_world_arm, Brobot_world_head, self.arm_reference_mode)
+            # Per-session wrist calibration absorbs the arbitrary XR world
+            # origin, so both controller paths use the stable world frame.
+            left_IPunitree_Brobot_waist_arm = transform_controller_world_arm_to_calibration_origin(
+                left_IPunitree_Brobot_world_arm, Brobot_world_head
+            )
+            right_IPunitree_Brobot_waist_arm = transform_controller_world_arm_to_calibration_origin(
+                right_IPunitree_Brobot_world_arm, Brobot_world_head
+            )
             return TeleData(
                 head_pose=Brobot_world_head,
                 left_wrist_pose=left_IPunitree_Brobot_waist_arm,
