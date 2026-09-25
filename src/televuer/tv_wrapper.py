@@ -119,6 +119,19 @@ def transform_IPunitree_Brobot_world_arm_to_head_then_waist(IPunitree_Brobot_wor
     IPunitree_Brobot_waist_arm[2, 3] += 0.45
     return IPunitree_Brobot_waist_arm
 
+
+def transform_controller_world_arm_to_calibration_origin(IPunitree_Brobot_world_arm, _Brobot_world_head=None):
+    """Express a controller in a stable world-aligned calibration frame.
+
+    Per-session wrist calibration absorbs the arbitrary OpenXR world origin.
+    Subtracting the live headset pose here would instead turn headset motion
+    into an equal and opposite robot-wrist command.
+    """
+    result = np.asarray(IPunitree_Brobot_world_arm, dtype=float).copy()
+    result[0, 3] += 0.15
+    result[2, 3] += 0.45
+    return result
+
 # constants variable
 T_TO_UNITREE_HUMANOID_LEFT_ARM = np.array([[1, 0, 0, 0],
                                            [0, 0,-1, 0],
@@ -359,11 +372,15 @@ class TeleVuerWrapper:
                 right_IPunitree_Brobot_world_arm = right_IPxr_Brobot_world_arm
 
             # =====coordinate origin offset=====
-            # The origin of the coordinate for IK Solve is near the WAIST joint motor. You can use teleop/robot_control/robot_arm_ik.py Unit_Test to visualize it.
-            # Transfer IPunitree_Brobot_world_arm to IPunitree_Brobot_head_arm first, then translate the origin from HEAD to WAIST.
-            # "head_yaw" additionally left-multiplies R_Brobot_world_head_yaw^T, ignoring pitch/roll.
-            left_IPunitree_Brobot_waist_arm = transform_IPunitree_Brobot_world_arm_to_head_then_waist(left_IPunitree_Brobot_world_arm, Brobot_world_head, self.arm_reference_mode)
-            right_IPunitree_Brobot_waist_arm = transform_IPunitree_Brobot_world_arm_to_head_then_waist(right_IPunitree_Brobot_world_arm, Brobot_world_head, self.arm_reference_mode)
+            # Hand skeleton control keeps the reference implementation's live
+            # head-relative frame. Controller-driven arms use a stable world
+            # frame because per-session calibration already removes its origin.
+            if arm_source_uses_openxr_hand_convention:
+                left_IPunitree_Brobot_waist_arm = transform_IPunitree_Brobot_world_arm_to_head_then_waist(left_IPunitree_Brobot_world_arm, Brobot_world_head, self.arm_reference_mode)
+                right_IPunitree_Brobot_waist_arm = transform_IPunitree_Brobot_world_arm_to_head_then_waist(right_IPunitree_Brobot_world_arm, Brobot_world_head, self.arm_reference_mode)
+            else:
+                left_IPunitree_Brobot_waist_arm = transform_controller_world_arm_to_calibration_origin(left_IPunitree_Brobot_world_arm, Brobot_world_head)
+                right_IPunitree_Brobot_waist_arm = transform_controller_world_arm_to_calibration_origin(right_IPunitree_Brobot_world_arm, Brobot_world_head)
 
             # -----------------------------------hand position----------------------------------------
             if left_arm_is_valid and right_arm_is_valid:
