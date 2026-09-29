@@ -467,7 +467,8 @@ class TeleVuerWrapper:
                 right_ctrl_thumbstickValue=self.tvuer.right_ctrl_thumbstickValue,
                 controller_sample_timestamp=controller_sample_timestamp,
                 hand_sample_timestamp=hand_sample_timestamp,
-                # Preserve right-controller lifecycle buttons in hand-tracking mode.
+                # Preserve controller lifecycle buttons in hand-tracking mode.
+                left_ctrl_aButton=self.tvuer.left_ctrl_aButton,
                 right_ctrl_aButton=self.tvuer.right_ctrl_aButton,
                 left_ctrl_bButton=self.tvuer.left_ctrl_bButton,
                 right_ctrl_bButton=self.tvuer.right_ctrl_bButton,
