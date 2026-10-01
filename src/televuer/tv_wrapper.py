@@ -246,7 +246,8 @@ class TeleVuerWrapper:
                        display_mode: Literal["immersive", "pass-through", "ego"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None,
                        cert_file: str=None, key_file: str=None, return_hand_rot_data: bool=False,
                        arm_reference_mode: Literal["head_position", "head_yaw"]="head_yaw",
-                       arm_pose_source: Literal["hand", "controller"]="hand"):
+                       arm_pose_source: Literal["hand", "controller"]="hand",
+                       video_plane_height: float=1.0, video_plane_distance: float=1.0):
         """
         TeleVuerWrapper is a wrapper for the TeleVuer class, which handles XR device's data suit for robot control.
         It initializes the TeleVuer instance with the specified parameters and provides a method to get motion state data.
@@ -302,7 +303,8 @@ class TeleVuerWrapper:
         self.arm_pose_source = arm_pose_source
         self.tvuer = TeleVuer(use_hand_tracking=use_hand_tracking, binocular=binocular, img_shape=img_shape, display_fps=display_fps,
                               display_mode=display_mode, zmq=zmq, webrtc=webrtc, webrtc_url=webrtc_url, 
-                              cert_file=cert_file, key_file=key_file)
+                              cert_file=cert_file, key_file=key_file,
+                              video_plane_height=video_plane_height, video_plane_distance=video_plane_distance)
     def set_pressure_samples(self, left, right):
         """Forward timestamped Dex3 pressure samples to the Vuer process."""
         self.tvuer.set_pressure_samples(left, right)

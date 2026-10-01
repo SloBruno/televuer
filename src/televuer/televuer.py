@@ -25,7 +25,8 @@ from typing import Literal
 class TeleVuer:
     def __init__(self, use_hand_tracking: bool, binocular: bool=True, img_shape: tuple=None, display_fps: float=30.0,
                        display_mode: Literal["immersive", "pass-through", "ego"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
-                       cert_file: str=None, key_file: str=None):
+                       cert_file: str=None, key_file: str=None,
+                       video_plane_height: float=1.0, video_plane_distance: float=1.0):
         """
         TeleVuer class for OpenXR-based XR teleoperate applications.
         This class handles the communication with the Vuer server and manages image and pose data.
@@ -113,6 +114,8 @@ class TeleVuer:
             self.vuer.add_handler("HAND_MOVE")(self.on_hand_move)
 
         self.display_mode = display_mode
+        self.video_plane_height = video_plane_height
+        self.video_plane_distance = video_plane_distance
         self.zmq = zmq
         self.webrtc = webrtc
         self.webrtc_url = webrtc_url
@@ -474,8 +477,8 @@ class TeleVuer:
                     ImageBackground(
                         self.img2display,
                         aspect=self.aspect_ratio,
-                        height=1,
-                        distanceToCamera=1,
+                        height=self.video_plane_height,
+                        distanceToCamera=self.video_plane_distance,
                         format="jpeg",
                         quality=80,
                         key="background-mono",
