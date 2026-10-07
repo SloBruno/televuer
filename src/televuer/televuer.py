@@ -317,7 +317,22 @@ class TeleVuer:
             pass
     
     ## immersive MODE
+    def _remove_default_grid(self, session):
+        """Remove vuer's default floor grid once per session, before any upsert.
+
+        The vuer frontend used here builds the default Scene with
+        ``Grid(key="default-grid")`` in bgChildren; ``queries=dict(grid=False)``
+        / ``&grid=False`` does not remove it, so a checkered floor cuts through
+        the camera image. Only that key is removed (Hands/MotionControllers and
+        tracking are untouched). Best effort: never breaks the session loop.
+        """
+        try:
+            session.remove @ ["default-grid"]
+        except Exception as e:
+            print(f"[TeleVuer] Warning: could not remove default grid: {e}")
+
     async def main_image_binocular_zmq(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -373,6 +388,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_zmq(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -413,6 +429,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -450,6 +467,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_webrtc(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -487,6 +505,7 @@ class TeleVuer:
 
     ## ego MODE
     async def main_image_binocular_zmq_ego(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -542,6 +561,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_zmq_ego(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -582,6 +602,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc_ego(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -619,6 +640,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_webrtc_ego(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -656,6 +678,7 @@ class TeleVuer:
 
     ## pass-through MODE
     async def main_pass_through(self, session):
+        self._remove_default_grid(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
