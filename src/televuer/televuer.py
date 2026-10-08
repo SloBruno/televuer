@@ -1,5 +1,8 @@
 from vuer import Vuer
-from vuer.schemas import ImageBackground, Hands, MotionControllers, WebRTCVideoPlane, WebRTCStereoVideoPlane
+from vuer.schemas import (
+    ImageBackground, Hands, MotionControllers, SceneElement,
+    WebRTCVideoPlane, WebRTCStereoVideoPlane,
+)
 from teleop.utils.haptics import HapticTransportAdapter
 from .controller_pose_sample import (
     CONTROLLER_POSE_SAMPLE_SIZE,
@@ -20,6 +23,15 @@ import cv2
 import os
 from pathlib import Path
 from typing import Literal
+
+
+class HeadTracking(SceneElement):
+    """Generic ``Head`` scene element compatible with Python Vuer 0.0.60.
+
+    The hosted vuer.ai client (0.0.98+) resolves this tag and emits HEAD_MOVE.
+    """
+
+    tag = "Head"
 
 
 class TeleVuer:
@@ -107,6 +119,7 @@ class TeleVuer:
                     key_file = key_file or str(current_module_dir / "key.pem")
 
         self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
+        self.vuer.add_handler("HEAD_MOVE")(self.on_head_move)
         self.vuer.add_handler("CAMERA_MOVE")(self.on_cam_move)
         # Controller buttons remain available while hand tracking drives the robot.
         self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
@@ -156,6 +169,7 @@ class TeleVuer:
         self.vuer.spawn(start=False)(fn)
 
         self.head_pose_shared = Array('d', 16, lock=True)
+        self.head_pose_timestamp_shared = Value('d', 0.0, lock=True)
         # Keep hand-skeleton and controller pose streams separate. In mixed
         # mode both events arrive, and sharing one buffer makes the arm target
         # depend on whichever browser event happened last.
@@ -262,11 +276,28 @@ class TeleVuer:
             except:
                 pass
 
-    async def on_cam_move(self, event, session, fps=60):
+    def _store_head_pose(self, matrix):
+        pose = np.asarray(matrix, dtype=float).reshape(-1)
+        if pose.shape != (16,) or not np.all(np.isfinite(pose)):
+            return False
+        with self.head_pose_shared.get_lock():
+            self.head_pose_shared[:] = pose
+        with self.head_pose_timestamp_shared.get_lock():
+            self.head_pose_timestamp_shared.value = time.monotonic()
+        return True
+
+    async def on_head_move(self, event, session, fps=60):
+        """Receive hosted-client Head/HEAD_MOVE: ``value.matrix`` is column-major."""
         try:
-            with self.head_pose_shared.get_lock():
-                self.head_pose_shared[:] = event.value["camera"]["matrix"]
-        except:
+            self._store_head_pose(event.value["matrix"])
+        except Exception:
+            pass
+
+    async def on_cam_move(self, event, session, fps=60):
+        """Legacy client compatibility: CAMERA_MOVE nests the same matrix."""
+        try:
+            self._store_head_pose(event.value["camera"]["matrix"])
+        except Exception:
             pass
 
     async def on_controller_move(self, event, session, fps=60):
@@ -375,8 +406,15 @@ class TeleVuer:
         except:
             pass
     
+    def _upsert_head_tracking(self, session):
+        session.upsert(
+            HeadTracking(key="head_tracking", stream=True, fps=30, show=False),
+            to="bgChildren",
+        )
+
     ## immersive MODE
     async def main_image_binocular_zmq(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -441,6 +479,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_zmq(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -490,6 +529,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -536,6 +576,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_webrtc(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -582,6 +623,7 @@ class TeleVuer:
 
     ## ego MODE
     async def main_image_binocular_zmq_ego(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -646,6 +688,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_zmq_ego(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -695,6 +738,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc_ego(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -741,6 +785,7 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_webrtc_ego(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -787,6 +832,7 @@ class TeleVuer:
 
     ## pass-through MODE
     async def main_pass_through(self, session):
+        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -826,6 +872,12 @@ class TeleVuer:
         """np.ndarray, shape (4, 4), head SE(3) pose matrix from Vuer (basis OpenXR Convention)."""
         with self.head_pose_shared.get_lock():
             return np.array(self.head_pose_shared[:]).reshape(4, 4, order="F")
+
+    @property
+    def head_pose_timestamp(self):
+        """Monotonic receipt time of the latest valid HEAD_MOVE/CAMERA_MOVE."""
+        with self.head_pose_timestamp_shared.get_lock():
+            return float(self.head_pose_timestamp_shared.value)
 
     @property
     def hand_pose_sample(self):
