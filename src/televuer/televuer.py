@@ -28,6 +28,12 @@ from pathlib import Path
 from typing import Literal
 
 
+class HeadTracking(SceneElement):
+    """Wire-format Head element for hosted clients that declare support."""
+
+    tag = "Head"
+
+
 class TeleVuer:
     def __init__(self, use_hand_tracking: bool, binocular: bool=True, img_shape: tuple=None, display_fps: float=30.0,
                        display_mode: Literal["immersive", "pass-through", "ego"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
@@ -115,9 +121,10 @@ class TeleVuer:
         self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
         self.vuer.add_handler("HEAD_MOVE")(self.on_head_move)
         self.vuer.add_handler("CAMERA_MOVE")(self.on_cam_move)
-        # Vuer 0.0.60 calls this event "Init" (not "INIT"). A compatible
-        # client may include runtime metadata here; absence remains explicit.
+        # The server's internal Init event is title-cased, while the hosted
+        # browser sends uppercase INIT with its actual package metadata.
         self.vuer.add_handler("Init")(self.on_client_init)
+        self.vuer.add_handler("INIT")(self.on_client_init)
         # Controller buttons remain available while hand tracking drives the robot.
         self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
         if self.use_hand_tracking:
@@ -174,9 +181,7 @@ class TeleVuer:
             "pkg": "vuer",
             "pkgVersion": None,
             "userAgent": None,
-            # This is the locally-served client bundle, not an inferred
-            # hosted-client version.
-            "clientBundleVersion": self._vuer_package_version(),
+            "serverPackageVersion": self._vuer_package_version(),
             "headComponentExpected": None,
         })
         # Keep hand-skeleton and controller pose streams separate. In mixed
@@ -355,26 +360,43 @@ class TeleVuer:
             pass
 
     @staticmethod
-    def _head_component_expected(pkg_version):
-        """Known hosted Vuer Head support; unknown/malformed stays unknown."""
+    def _head_component_expected(pkg, pkg_version):
+        """Return True only for the hosted Vuer package that ships Head."""
+        if pkg != "@vuer-ai/vuer":
+            return False
         try:
             return tuple(int(part) for part in pkg_version.split(".")) >= (0, 0, 98)
         except (AttributeError, ValueError):
-            return None
+            return False
+
+    @staticmethod
+    def _upsert_head_tracking(session):
+        session.upsert(
+            HeadTracking(key="head_tracking", stream=True, fps=30, show=False),
+            to="bgChildren",
+        )
 
     async def on_client_init(self, event, session, fps=60):
-        """Record client-declared runtime metadata, without guessing absent data."""
+        """Enable Head only after a client declares the known-safe capability."""
         value = event.value if isinstance(getattr(event, "value", None), dict) else {}
+        supports_head = self._head_component_expected(
+            value.get("pkg"), value.get("pkgVersion"))
         self._store_client_info({
             "client": value.get("client"),
             "pkg": value.get("pkg"),
             "pkgVersion": value.get("pkgVersion"),
             "userAgent": value.get("userAgent"),
-            "clientBundleVersion": self._vuer_package_version(),
-            "headComponentExpected": value.get(
-                "headComponentExpected", self._head_component_expected(value.get("pkgVersion"))
-            ),
+            "serverPackageVersion": self._vuer_package_version(),
+            "headComponentExpected": supports_head,
         })
+        head_mode = "enabled" if supports_head else "disabled (CAMERA_MOVE compatibility only)"
+        print(
+            "[TeleVuer] client INIT: "
+            f"pkg={value.get('pkg')} pkgVersion={value.get('pkgVersion')}; "
+            f"HEAD_MOVE={head_mode}"
+        )
+        if supports_head and session is not None:
+            self._upsert_head_tracking(session)
 
     async def on_controller_move(self, event, session, fps=60):
         """https://docs.vuer.ai/en/latest/examples/20_motion_controllers.html"""

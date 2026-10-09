@@ -79,37 +79,39 @@ def test_camera_move_accepts_legacy_nested_and_direct_matrix_schemas(monkeypatch
     np.testing.assert_array_equal(viewer.head_pose, np.array(second).reshape(4, 4, order="F"))
 
 
-def test_init_records_actual_browser_version_and_head_capability(monkeypatch):
+def test_init_records_actual_browser_version_and_head_capability(monkeypatch, capsys):
     module = _import_televuer(monkeypatch)
     viewer = _viewer_with_head_state(module)
+    monkeypatch.setattr(module.TeleVuer, "_vuer_package_version", staticmethod(lambda: "0.0.60"))
     event = types.SimpleNamespace(value={
-        "client": "browser", "pkg": "@vuer-ai/viewer", "pkgVersion": "0.0.103",
+        "client": "browser", "pkg": "@vuer-ai/vuer", "pkgVersion": "0.0.103",
         "userAgent": "QuestBrowser/42",
     })
 
     asyncio.run(viewer.on_client_init(event, None))
 
+    assert "pkg=@vuer-ai/vuer pkgVersion=0.0.103; HEAD_MOVE=enabled" in capsys.readouterr().out
     assert viewer.client_info == {
         "client": "browser",
-        "pkg": "@vuer-ai/viewer",
+        "pkg": "@vuer-ai/vuer",
         "pkgVersion": "0.0.103",
         "userAgent": "QuestBrowser/42",
-        "clientBundleVersion": "0.0.60",
+        "serverPackageVersion": "0.0.60",
         "headComponentExpected": True,
     }
 
 
-def test_init_without_version_reports_unknown_capability(monkeypatch):
+def test_init_without_version_reports_head_disabled(monkeypatch):
     module = _import_televuer(monkeypatch)
     viewer = _viewer_with_head_state(module)
 
     asyncio.run(viewer.on_client_init(types.SimpleNamespace(value={}), None))
 
     assert viewer.client_info["pkgVersion"] is None
-    assert viewer.client_info["headComponentExpected"] is None
+    assert viewer.client_info["headComponentExpected"] is False
 
 
-def test_local_vuer_0060_scene_modes_do_not_inject_unsupported_head(monkeypatch):
+def test_init_upserts_head_only_for_known_modern_hosted_client(monkeypatch):
     module = _import_televuer(monkeypatch)
 
     class Session:
@@ -119,36 +121,41 @@ def test_local_vuer_0060_scene_modes_do_not_inject_unsupported_head(monkeypatch)
         def upsert(self, component, **kwargs):
             self.components.append(component)
 
-    class Stop(Exception):
-        pass
+    viewer = _viewer_with_head_state(module)
+    session = Session()
 
-    async def stop(*args, **kwargs):
-        raise Stop
+    # Scenes render before metadata negotiation; only a known supported client
+    # receives the Head tag later through this session.
+    asyncio.run(viewer.on_client_init(types.SimpleNamespace(value={
+        "client": "browser", "pkg": "@vuer-ai/vuer", "pkgVersion": "0.0.103",
+    }), session))
 
-    monkeypatch.setattr(module.asyncio, "sleep", stop)
-    for scene_name in (
-        "main_image_binocular_zmq", "main_image_monocular_zmq",
-        "main_image_binocular_webrtc", "main_image_monocular_webrtc",
-        "main_image_binocular_zmq_ego", "main_image_monocular_zmq_ego",
-        "main_image_binocular_webrtc_ego", "main_image_monocular_webrtc_ego",
-        "main_pass_through",
+    assert [item.serialize() for item in session.components] == [{
+        "tag": "Head", "key": "head_tracking", "stream": True, "fps": 30,
+        "show": False,
+    }]
+
+
+def test_init_never_upserts_head_for_local_old_or_unknown_client(monkeypatch):
+    module = _import_televuer(monkeypatch)
+
+    class Session:
+        def __init__(self):
+            self.components = []
+
+        def upsert(self, component, **kwargs):
+            self.components.append(component)
+
+    viewer = _viewer_with_head_state(module)
+    for value in (
+        {"client": "browser", "pkg": "@vuer-ai/vuer", "pkgVersion": "0.0.60"},
+        {"client": "browser", "pkg": "@vuer-ai/vuer", "pkgVersion": "broken"},
+        {"client": "browser", "pkg": "vuer", "pkgVersion": "9.9.9"},
+        {},
     ):
-        viewer = module.TeleVuer.__new__(module.TeleVuer)
-        viewer.use_hand_tracking = False
-        viewer.display_fps = 30.0
-        viewer.img2display = np.zeros((2, 4, 3), dtype=np.uint8)
-        viewer.img_width = 2
-        viewer.aspect_ratio = 1.0
-        viewer.video_plane_height = 1.0
-        viewer.video_plane_distance = 1.0
-        viewer.webrtc_url = "https://example.invalid/offer"
         session = Session()
-        try:
-            asyncio.run(getattr(viewer, scene_name)(session))
-        except Stop:
-            pass
-        heads = [item.serialize() for item in session.components if getattr(item, "tag", None) == "Head"]
-        assert heads == [], scene_name
+        asyncio.run(viewer.on_client_init(types.SimpleNamespace(value=value), session))
+        assert session.components == [], value
 
 
 def test_wrapper_forwards_head_receipt_timestamp_and_fallback_state(monkeypatch):
