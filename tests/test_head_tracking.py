@@ -41,20 +41,6 @@ def _import_televuer(monkeypatch):
     return importlib.import_module("televuer.televuer")
 
 
-def test_python_vuer_0060_compatible_generic_head_component(monkeypatch):
-    module = _import_televuer(monkeypatch)
-
-    component = module.HeadTracking(key="head_tracking", stream=True, fps=30, show=False)
-
-    assert component.serialize() == {
-        "tag": "Head",
-        "key": "head_tracking",
-        "stream": True,
-        "fps": 30,
-        "show": False,
-    }
-
-
 def _viewer_with_head_state(module):
     viewer = module.TeleVuer.__new__(module.TeleVuer)
     viewer.head_pose_shared = Array("d", 16, lock=True)
@@ -108,6 +94,7 @@ def test_init_records_actual_browser_version_and_head_capability(monkeypatch):
         "pkg": "@vuer-ai/viewer",
         "pkgVersion": "0.0.103",
         "userAgent": "QuestBrowser/42",
+        "clientBundleVersion": "0.0.60",
         "headComponentExpected": True,
     }
 
@@ -122,7 +109,7 @@ def test_init_without_version_reports_unknown_capability(monkeypatch):
     assert viewer.client_info["headComponentExpected"] is None
 
 
-def test_all_scene_modes_request_hosted_client_head_stream(monkeypatch):
+def test_local_vuer_0060_scene_modes_do_not_inject_unsupported_head(monkeypatch):
     module = _import_televuer(monkeypatch)
 
     class Session:
@@ -161,7 +148,7 @@ def test_all_scene_modes_request_hosted_client_head_stream(monkeypatch):
         except Stop:
             pass
         heads = [item.serialize() for item in session.components if getattr(item, "tag", None) == "Head"]
-        assert heads == [{"tag": "Head", "key": "head_tracking", "stream": True, "fps": 30, "show": False}], scene_name
+        assert heads == [], scene_name
 
 
 def test_wrapper_forwards_head_receipt_timestamp_and_fallback_state(monkeypatch):

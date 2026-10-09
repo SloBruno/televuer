@@ -28,15 +28,6 @@ from pathlib import Path
 from typing import Literal
 
 
-class HeadTracking(SceneElement):
-    """Generic ``Head`` scene element compatible with Python Vuer 0.0.60.
-
-    The hosted vuer.ai client (0.0.98+) resolves this tag and emits HEAD_MOVE.
-    """
-
-    tag = "Head"
-
-
 class TeleVuer:
     def __init__(self, use_hand_tracking: bool, binocular: bool=True, img_shape: tuple=None, display_fps: float=30.0,
                        display_mode: Literal["immersive", "pass-through", "ego"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
@@ -379,6 +370,7 @@ class TeleVuer:
             "pkg": value.get("pkg"),
             "pkgVersion": value.get("pkgVersion"),
             "userAgent": value.get("userAgent"),
+            "clientBundleVersion": self._vuer_package_version(),
             "headComponentExpected": value.get(
                 "headComponentExpected", self._head_component_expected(value.get("pkgVersion"))
             ),
@@ -490,15 +482,8 @@ class TeleVuer:
         except:
             pass
     
-    def _upsert_head_tracking(self, session):
-        session.upsert(
-            HeadTracking(key="head_tracking", stream=True, fps=30, show=False),
-            to="bgChildren",
-        )
-
     ## immersive MODE
     async def main_image_binocular_zmq(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -563,7 +548,6 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_zmq(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -613,7 +597,6 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -660,7 +643,6 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_webrtc(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -707,7 +689,6 @@ class TeleVuer:
 
     ## ego MODE
     async def main_image_binocular_zmq_ego(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -772,7 +753,6 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_zmq_ego(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -822,7 +802,6 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc_ego(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -869,7 +848,6 @@ class TeleVuer:
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_monocular_webrtc_ego(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
@@ -916,7 +894,6 @@ class TeleVuer:
 
     ## pass-through MODE
     async def main_pass_through(self, session):
-        self._upsert_head_tracking(session)
         if self.use_hand_tracking:
             session.upsert(
                 Hands(
