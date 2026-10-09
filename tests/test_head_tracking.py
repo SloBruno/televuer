@@ -55,11 +55,18 @@ def test_python_vuer_0060_compatible_generic_head_component(monkeypatch):
     }
 
 
-def test_head_move_real_schema_updates_column_major_pose_and_timestamp(monkeypatch):
-    module = _import_televuer(monkeypatch)
+def _viewer_with_head_state(module):
     viewer = module.TeleVuer.__new__(module.TeleVuer)
     viewer.head_pose_shared = Array("d", 16, lock=True)
     viewer.head_pose_timestamp_shared = Value("d", 0.0, lock=True)
+    viewer.head_pose_source_shared = Array("c", 16, lock=True)
+    viewer.client_info_shared = Array("c", 512, lock=True)
+    return viewer
+
+
+def test_head_move_real_schema_updates_column_major_pose_and_timestamp(monkeypatch):
+    module = _import_televuer(monkeypatch)
+    viewer = _viewer_with_head_state(module)
     matrix = list(range(16))
     event = types.SimpleNamespace(value={"matrix": matrix})
     monkeypatch.setattr(module.time, "monotonic", lambda: 123.5)
@@ -68,6 +75,51 @@ def test_head_move_real_schema_updates_column_major_pose_and_timestamp(monkeypat
 
     np.testing.assert_array_equal(viewer.head_pose, np.array(matrix).reshape(4, 4, order="F"))
     assert viewer.head_pose_timestamp == 123.5
+    assert viewer.head_pose_source == "HEAD_MOVE"
+
+
+def test_camera_move_accepts_legacy_nested_and_direct_matrix_schemas(monkeypatch):
+    module = _import_televuer(monkeypatch)
+    viewer = _viewer_with_head_state(module)
+    monkeypatch.setattr(module.time, "monotonic", lambda: 10.0)
+    first = list(range(16))
+    second = list(range(16, 32))
+
+    asyncio.run(viewer.on_cam_move(types.SimpleNamespace(value={"camera": {"matrix": first}}), None))
+    np.testing.assert_array_equal(viewer.head_pose, np.array(first).reshape(4, 4, order="F"))
+    assert viewer.head_pose_source == "CAMERA_MOVE"
+
+    asyncio.run(viewer.on_cam_move(types.SimpleNamespace(value={"matrix": second}), None))
+    np.testing.assert_array_equal(viewer.head_pose, np.array(second).reshape(4, 4, order="F"))
+
+
+def test_init_records_actual_browser_version_and_head_capability(monkeypatch):
+    module = _import_televuer(monkeypatch)
+    viewer = _viewer_with_head_state(module)
+    event = types.SimpleNamespace(value={
+        "client": "browser", "pkg": "@vuer-ai/viewer", "pkgVersion": "0.0.103",
+        "userAgent": "QuestBrowser/42",
+    })
+
+    asyncio.run(viewer.on_client_init(event, None))
+
+    assert viewer.client_info == {
+        "client": "browser",
+        "pkg": "@vuer-ai/viewer",
+        "pkgVersion": "0.0.103",
+        "userAgent": "QuestBrowser/42",
+        "headComponentExpected": True,
+    }
+
+
+def test_init_without_version_reports_unknown_capability(monkeypatch):
+    module = _import_televuer(monkeypatch)
+    viewer = _viewer_with_head_state(module)
+
+    asyncio.run(viewer.on_client_init(types.SimpleNamespace(value={}), None))
+
+    assert viewer.client_info["pkgVersion"] is None
+    assert viewer.client_info["headComponentExpected"] is None
 
 
 def test_all_scene_modes_request_hosted_client_head_stream(monkeypatch):

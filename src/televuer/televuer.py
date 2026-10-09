@@ -15,8 +15,11 @@ from .hand_pose_sample import (
     write_hand_pose_sample,
 )
 from multiprocessing import Value, Array, Process, shared_memory
+from importlib.metadata import PackageNotFoundError, version as package_version
 import numpy as np
 import asyncio
+import json
+import signal
 import threading
 import time
 import cv2
@@ -121,6 +124,9 @@ class TeleVuer:
         self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
         self.vuer.add_handler("HEAD_MOVE")(self.on_head_move)
         self.vuer.add_handler("CAMERA_MOVE")(self.on_cam_move)
+        # Vuer 0.0.60 calls this event "Init" (not "INIT"). A compatible
+        # client may include runtime metadata here; absence remains explicit.
+        self.vuer.add_handler("Init")(self.on_client_init)
         # Controller buttons remain available while hand tracking drives the robot.
         self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
         if self.use_hand_tracking:
@@ -170,6 +176,18 @@ class TeleVuer:
 
         self.head_pose_shared = Array('d', 16, lock=True)
         self.head_pose_timestamp_shared = Value('d', 0.0, lock=True)
+        self.head_pose_source_shared = Array('c', b'\0' * 16, lock=True)
+        self.client_info_shared = Array('c', b'\0' * 512, lock=True)
+        self._store_client_info({
+            "client": None,
+            "pkg": "vuer",
+            "pkgVersion": None,
+            "userAgent": None,
+            # This is the locally-served client bundle, not an inferred
+            # hosted-client version.
+            "clientBundleVersion": self._vuer_package_version(),
+            "headComponentExpected": None,
+        })
         # Keep hand-skeleton and controller pose streams separate. In mixed
         # mode both events arrive, and sharing one buffer makes the arm target
         # depend on whichever browser event happened last.
@@ -221,6 +239,9 @@ class TeleVuer:
         self.process.start()
     
     def _vuer_run(self):
+        # multiprocessing inherits Python's SIGTERM handler. Restore the OS
+        # default in the server child so close() cannot leave 8012 orphaned.
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
         try:
             self.vuer.run()
         except KeyboardInterrupt:
@@ -264,8 +285,21 @@ class TeleVuer:
                 getattr(self, f"{side}_pressure_timestamp_shared").value = float(timestamp)
 
     def close(self):
-        self.process.terminate()
-        self.process.join(timeout=0.5)
+        process = getattr(self, "process", None)
+        if getattr(self, "_process_closed", False):
+            process = None
+        if process is not None and process.is_alive():
+            process.terminate()
+            process.join(timeout=0.5)
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=0.5)
+        if process is not None and not process.is_alive():
+            try:
+                process.close()
+            except (AttributeError, ValueError):
+                pass
+            self._process_closed = True
         if self.display_mode in ("immersive", "ego") and not self.webrtc:
             self.stop_writer_event.set()
             self.new_frame_event.set()
@@ -276,7 +310,29 @@ class TeleVuer:
             except:
                 pass
 
-    def _store_head_pose(self, matrix):
+    @staticmethod
+    def _vuer_package_version():
+        try:
+            return package_version("vuer")
+        except PackageNotFoundError:
+            return None
+
+    @staticmethod
+    def _read_shared_text(shared):
+        with shared.get_lock():
+            raw = bytes(shared[:])
+        return raw.split(b"\0", 1)[0].decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _write_shared_text(shared, text):
+        encoded = text.encode("utf-8")[:len(shared) - 1]
+        with shared.get_lock():
+            shared[:] = encoded + (b"\0" * (len(shared) - len(encoded)))
+
+    def _store_client_info(self, info):
+        self._write_shared_text(self.client_info_shared, json.dumps(info, sort_keys=True))
+
+    def _store_head_pose(self, matrix, source):
         pose = np.asarray(matrix, dtype=float).reshape(-1)
         if pose.shape != (16,) or not np.all(np.isfinite(pose)):
             return False
@@ -284,21 +340,49 @@ class TeleVuer:
             self.head_pose_shared[:] = pose
         with self.head_pose_timestamp_shared.get_lock():
             self.head_pose_timestamp_shared.value = time.monotonic()
+        self._write_shared_text(self.head_pose_source_shared, source)
         return True
 
     async def on_head_move(self, event, session, fps=60):
         """Receive hosted-client Head/HEAD_MOVE: ``value.matrix`` is column-major."""
         try:
-            self._store_head_pose(event.value["matrix"])
+            self._store_head_pose(event.value["matrix"], "HEAD_MOVE")
         except Exception:
             pass
 
     async def on_cam_move(self, event, session, fps=60):
         """Legacy client compatibility: CAMERA_MOVE nests the same matrix."""
         try:
-            self._store_head_pose(event.value["camera"]["matrix"])
+            # The locally-served 0.0.60 client emits {matrix: [...]}; older
+            # clients nest the same value under {camera: {matrix: [...]}}.
+            value = event.value
+            matrix = value.get("matrix") if isinstance(value, dict) else None
+            if matrix is None and isinstance(value, dict):
+                matrix = value.get("camera", {}).get("matrix")
+            self._store_head_pose(matrix, "CAMERA_MOVE")
         except Exception:
             pass
+
+    @staticmethod
+    def _head_component_expected(pkg_version):
+        """Known hosted Vuer Head support; unknown/malformed stays unknown."""
+        try:
+            return tuple(int(part) for part in pkg_version.split(".")) >= (0, 0, 98)
+        except (AttributeError, ValueError):
+            return None
+
+    async def on_client_init(self, event, session, fps=60):
+        """Record client-declared runtime metadata, without guessing absent data."""
+        value = event.value if isinstance(getattr(event, "value", None), dict) else {}
+        self._store_client_info({
+            "client": value.get("client"),
+            "pkg": value.get("pkg"),
+            "pkgVersion": value.get("pkgVersion"),
+            "userAgent": value.get("userAgent"),
+            "headComponentExpected": value.get(
+                "headComponentExpected", self._head_component_expected(value.get("pkgVersion"))
+            ),
+        })
 
     async def on_controller_move(self, event, session, fps=60):
         """https://docs.vuer.ai/en/latest/examples/20_motion_controllers.html"""
@@ -878,6 +962,18 @@ class TeleVuer:
         """Monotonic receipt time of the latest valid HEAD_MOVE/CAMERA_MOVE."""
         with self.head_pose_timestamp_shared.get_lock():
             return float(self.head_pose_timestamp_shared.value)
+
+    @property
+    def head_pose_source(self):
+        return self._read_shared_text(self.head_pose_source_shared) or None
+
+    @property
+    def client_info(self):
+        raw = self._read_shared_text(self.client_info_shared)
+        try:
+            return json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            return {}
 
     @property
     def hand_pose_sample(self):

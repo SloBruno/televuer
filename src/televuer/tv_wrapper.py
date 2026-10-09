@@ -209,8 +209,10 @@ class TeleData:
     right_hand_squeezeValue: float = 0.0   # (0.0 → 1.0) degree of hand squeeze
 
     motion_data_ready: bool = False        # True after the first hand or controller motion data event is received
-    head_pose_sample_timestamp: float = 0.0  # monotonic receipt time of latest valid head event
+    head_pose_sample_timestamp: float = 0.0  # monotonic receipt time of latest head event
     head_pose_is_fallback: bool = True       # True when CONST_HEAD_POSE substituted invalid/missing input
+    head_pose_source: str | None = None
+    client_info: dict | None = None
     hand_sample_timestamp: float = 0.0        # monotonic timestamp of latest hand wrist-pose pair
     controller_sample_timestamp: float = 0.0  # monotonic timestamp of latest controller sample
     # controller tracking
@@ -446,6 +448,8 @@ class TeleVuerWrapper:
                 head_pose=Brobot_world_head,
                 head_pose_sample_timestamp=float(getattr(self.tvuer, "head_pose_timestamp", 0.0)),
                 head_pose_is_fallback=not head_pose_is_valid,
+                head_pose_source=getattr(self.tvuer, "head_pose_source", None),
+                client_info=getattr(self.tvuer, "client_info", None),
                 left_wrist_pose=left_IPunitree_Brobot_waist_arm,
                 right_wrist_pose=right_IPunitree_Brobot_waist_arm,
                 left_hand_pos=left_IPunitree_Brobot_arm_hand_pos,
@@ -509,6 +513,8 @@ class TeleVuerWrapper:
                 head_pose=Brobot_world_head,
                 head_pose_sample_timestamp=float(getattr(self.tvuer, "head_pose_timestamp", 0.0)),
                 head_pose_is_fallback=not head_pose_is_valid,
+                head_pose_source=getattr(self.tvuer, "head_pose_source", None),
+                client_info=getattr(self.tvuer, "client_info", None),
                 left_wrist_pose=left_IPunitree_Brobot_waist_arm,
                 right_wrist_pose=right_IPunitree_Brobot_waist_arm,
                 motion_data_ready=self.tvuer.motion_data_ready,
