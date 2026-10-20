@@ -23,10 +23,15 @@ from typing import Literal
 
 
 class TeleVuer:
+    # Preserve the legacy encoder quality for lightweight test doubles and
+    # subclasses that bypass __init__; normal instances override this value.
+    jpeg_quality = 80
+
     def __init__(self, use_hand_tracking: bool, binocular: bool=True, img_shape: tuple=None, display_fps: float=30.0,
                        display_mode: Literal["immersive", "pass-through", "ego"]="immersive", zmq: bool=False, webrtc: bool=False, webrtc_url: str=None, 
                        cert_file: str=None, key_file: str=None,
-                       video_plane_height: float=1.0, video_plane_distance: float=1.0):
+                       video_plane_height: float=1.0, video_plane_distance: float=1.0,
+                       jpeg_quality: int=80):
         """
         TeleVuer class for OpenXR-based XR teleoperate applications.
         This class handles the communication with the Vuer server and manages image and pose data.
@@ -76,6 +81,9 @@ class TeleVuer:
             raise ValueError("[TeleVuer] img_shape must be provided.")
         self.img_shape = (img_shape[0], img_shape[1], 3)
         self.display_fps = display_fps
+        if not 1 <= jpeg_quality <= 100:
+            raise ValueError("[TeleVuer] jpeg_quality must be between 1 and 100.")
+        self.jpeg_quality = jpeg_quality
         self.img_height = self.img_shape[0]
         if self.binocular:
             self.img_width  = self.img_shape[1] // 2
@@ -419,7 +427,7 @@ class TeleVuer:
                         # Note that these two masks are associated with left eye’s camera and the right eye’s camera.
                         layers=1,
                         format="jpeg",
-                        quality=80,
+                        quality=self.jpeg_quality,
                         key="background-left",
                         interpolate=True,
                     ),
@@ -430,7 +438,7 @@ class TeleVuer:
                         distanceToCamera=1,
                         layers=2,
                         format="jpeg",
-                        quality=80,
+                        quality=self.jpeg_quality,
                         key="background-right",
                         interpolate=True,
                     ),
@@ -480,7 +488,7 @@ class TeleVuer:
                         height=self.video_plane_height,
                         distanceToCamera=self.video_plane_distance,
                         format="jpeg",
-                        quality=80,
+                        quality=self.jpeg_quality,
                         key="background-mono",
                         interpolate=True,
                     ),
@@ -624,7 +632,7 @@ class TeleVuer:
                         # Note that these two masks are associated with left eye’s camera and the right eye’s camera.
                         layers=1,
                         format="jpeg",
-                        quality=80,
+                        quality=self.jpeg_quality,
                         key="background-left",
                         interpolate=True,
                     ),
@@ -635,7 +643,7 @@ class TeleVuer:
                         distanceToCamera=2,
                         layers=2,
                         format="jpeg",
-                        quality=80,
+                        quality=self.jpeg_quality,
                         key="background-right",
                         interpolate=True,
                     ),
@@ -685,7 +693,7 @@ class TeleVuer:
                         height=0.75,
                         distanceToCamera=2,
                         format="jpeg",
-                        quality=80,
+                        quality=self.jpeg_quality,
                         key="background-mono",
                         interpolate=True,
                     ),
