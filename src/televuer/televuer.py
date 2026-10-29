@@ -1,4 +1,5 @@
 from vuer import Vuer
+from .session_lifecycle import session_is_open
 from vuer.schemas import (
     ImageBackground, Hands, MotionControllers, SceneElement,
     WebRTCVideoPlane, WebRTCStereoVideoPlane,
@@ -535,7 +536,7 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
-        while True:
+        while session_is_open(session):
             session.upsert(
                 [
                     ImageBackground(
@@ -600,7 +601,7 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
+        while session_is_open(session):
             session.upsert(
                 [
                     ImageBackground(
@@ -649,7 +650,7 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
+        while session_is_open(session):
             session.upsert(
                 WebRTCStereoVideoPlane(
                     src=self.webrtc_url,
@@ -695,7 +696,7 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
+        while session_is_open(session):
             session.upsert(
                 WebRTCVideoPlane(
                     src=self.webrtc_url,
@@ -740,7 +741,7 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
-        while True:
+        while session_is_open(session):
             session.upsert(
                 [
                     ImageBackground(
@@ -805,7 +806,7 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
+        while session_is_open(session):
             session.upsert(
                 [
                     ImageBackground(
@@ -854,7 +855,7 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
+        while session_is_open(session):
             session.upsert(
                 WebRTCStereoVideoPlane(
                     src=self.webrtc_url,
@@ -900,7 +901,7 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
+        while session_is_open(session):
             session.upsert(
                 WebRTCVideoPlane(
                     src=self.webrtc_url,
@@ -946,7 +947,7 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
+        while session_is_open(session):
             await asyncio.sleep(1.0 / self.display_fps)
 
     # ==================== common data ====================
