@@ -1,5 +1,5 @@
 from vuer import Vuer
-from .session_lifecycle import session_is_open
+from .session_lifecycle import install_socket_lifecycle, session_is_open
 from vuer.schemas import (
     ImageBackground, Hands, MotionControllers, SceneElement,
     WebRTCVideoPlane, WebRTCStereoVideoPlane,
@@ -120,6 +120,7 @@ class TeleVuer:
                     key_file = key_file or str(current_module_dir / "key.pem")
 
         self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
+        install_socket_lifecycle(self.vuer)
         self.vuer.add_handler("HEAD_MOVE")(self.on_head_move)
         self.vuer.add_handler("CAMERA_MOVE")(self.on_cam_move)
         # The server's internal Init event is title-cased, while the hosted
