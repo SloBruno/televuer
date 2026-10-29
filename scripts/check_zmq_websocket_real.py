@@ -126,7 +126,7 @@ class Pipeline(unittest.IsolatedAsyncioTestCase):
                         await asyncio.sleep(.01)
                 await asyncio.wait_for(wait(), timeout)
             try:
-                client = await asyncio.to_thread(ImageClient, host='127.0.0.1', request_port=rep_port, request_bgr=True, camera_names=['head_camera'])
+                client = await asyncio.to_thread(ImageClient, host='127.0.0.1', request_port=rep_port, request_bgr=True)
                 self.assertEqual(client.get_cam_config(), config)
                 async def transmit(bgr):
                     ok, jpg = cv2.imencode('.jpg', np.full((32, 32, 3), bgr, dtype=np.uint8))
