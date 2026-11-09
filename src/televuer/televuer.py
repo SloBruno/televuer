@@ -1,4 +1,4 @@
-from vuer import Vuer
+from .video_sender import VideoFrameSender, VideoVuer as Vuer
 from vuer.schemas import ImageBackground, Hands, MotionControllers, WebRTCVideoPlane, WebRTCStereoVideoPlane
 from teleop.utils.haptics import HapticTransportAdapter
 from .controller_pose_sample import (
@@ -414,11 +414,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
-        while True:
-            session.upsert(
-                [
+        sender = VideoFrameSender(session)
+        self.video_stream_stats = sender.stats
+        while sender.connected():
+            def build_elements():
+                # One full stereo snapshot, never a queue of raw frames.
+                image = self.img2display.copy()
+                return [
                     ImageBackground(
-                        self.img2display[:, :self.img_width],
+                        image[:, :self.img_width],
                         aspect=self.aspect_ratio,
                         height=1,
                         distanceToCamera=1,
@@ -432,7 +436,7 @@ class TeleVuer:
                         interpolate=True,
                     ),
                     ImageBackground(
-                        self.img2display[:, self.img_width:],
+                        image[:, self.img_width:],
                         aspect=self.aspect_ratio,
                         height=1,
                         distanceToCamera=1,
@@ -442,9 +446,8 @@ class TeleVuer:
                         key="background-right",
                         interpolate=True,
                     ),
-                ],
-                to="bgChildren",
-            )
+                ]
+            await sender.publish(build_elements)
             # 'jpeg' encoding should give you about 30fps with a 16ms wait in-between.
             await asyncio.sleep(1.0 / self.display_fps)
 
@@ -479,11 +482,15 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
-            session.upsert(
-                [
+        sender = VideoFrameSender(session)
+        self.video_stream_stats = sender.stats
+        while sender.connected():
+            def build_elements():
+                # One full stereo snapshot, never a queue of raw frames.
+                image = self.img2display.copy()
+                return [
                     ImageBackground(
-                        self.img2display,
+                        image,
                         aspect=self.aspect_ratio,
                         height=self.video_plane_height,
                         distanceToCamera=self.video_plane_distance,
@@ -492,9 +499,8 @@ class TeleVuer:
                         key="background-mono",
                         interpolate=True,
                     ),
-                ],
-                to="bgChildren",
-            )
+                ]
+            await sender.publish(build_elements)
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc(self, session):
@@ -619,11 +625,15 @@ class TeleVuer:
                 ),
                 to="bgChildren",
             )
-        while True:
-            session.upsert(
-                [
+        sender = VideoFrameSender(session)
+        self.video_stream_stats = sender.stats
+        while sender.connected():
+            def build_elements():
+                # One full stereo snapshot, never a queue of raw frames.
+                image = self.img2display.copy()
+                return [
                     ImageBackground(
-                        self.img2display[:, :self.img_width],
+                        image[:, :self.img_width],
                         aspect=self.aspect_ratio,
                         height=0.75,
                         distanceToCamera=2,
@@ -637,7 +647,7 @@ class TeleVuer:
                         interpolate=True,
                     ),
                     ImageBackground(
-                        self.img2display[:, self.img_width:],
+                        image[:, self.img_width:],
                         aspect=self.aspect_ratio,
                         height=0.75,
                         distanceToCamera=2,
@@ -647,9 +657,8 @@ class TeleVuer:
                         key="background-right",
                         interpolate=True,
                     ),
-                ],
-                to="bgChildren",
-            )
+                ]
+            await sender.publish(build_elements)
             # 'jpeg' encoding should give you about 30fps with a 16ms wait in-between.
             await asyncio.sleep(1.0 / self.display_fps)
 
@@ -684,11 +693,15 @@ class TeleVuer:
                 to="bgChildren",
             )
 
-        while True:
-            session.upsert(
-                [
+        sender = VideoFrameSender(session)
+        self.video_stream_stats = sender.stats
+        while sender.connected():
+            def build_elements():
+                # One full stereo snapshot, never a queue of raw frames.
+                image = self.img2display.copy()
+                return [
                     ImageBackground(
-                        self.img2display,
+                        image,
                         aspect=self.aspect_ratio,
                         height=0.75,
                         distanceToCamera=2,
@@ -697,9 +710,8 @@ class TeleVuer:
                         key="background-mono",
                         interpolate=True,
                     ),
-                ],
-                to="bgChildren",
-            )
+                ]
+            await sender.publish(build_elements)
             await asyncio.sleep(1.0 / self.display_fps)
 
     async def main_image_binocular_webrtc_ego(self, session):
