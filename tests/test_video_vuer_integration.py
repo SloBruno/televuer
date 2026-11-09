@@ -1,6 +1,6 @@
 """Real Vuer/aiohttp transport, loopback-only, no robot or DDS imports."""
 import asyncio
-from contextlib import suppress
+import cv2
 import socket
 import time
 
@@ -80,6 +80,9 @@ def test_real_vuer_slow_consumer_control_and_reconnect():
                         keys = {x.get('key') for x in children}
                         if keys == {'background-left', 'background-right'}:
                             assert all(isinstance(x['src'], bytes) for x in children)
+                            for child in children:
+                                image = cv2.imdecode(np.frombuffer(child['src'], np.uint8), cv2.IMREAD_COLOR)
+                                assert image.shape == (480, 640, 3)
                             found = True
                             break
                 assert found, payload

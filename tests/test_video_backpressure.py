@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import time
 
 import numpy as np
+import pytest
 
 from televuer.televuer import TeleVuer
 import televuer.televuer as core
@@ -41,7 +42,9 @@ def viewer():
     return tv
 
 
-def test_slow_stereo_encoding_does_not_stall_control_event_loop(monkeypatch):
+@pytest.mark.parametrize('method', ['main_image_binocular_zmq', 'main_image_monocular_zmq',
+                                    'main_image_binocular_zmq_ego', 'main_image_monocular_zmq_ego'])
+def test_slow_stereo_encoding_does_not_stall_control_event_loop(monkeypatch, method):
     def slow_image(*args, **kwargs):
         time.sleep(0.06)
         return kwargs
@@ -49,7 +52,7 @@ def test_slow_stereo_encoding_does_not_stall_control_event_loop(monkeypatch):
 
     async def run():
         tv, session = viewer(), Session()
-        task = asyncio.create_task(tv.main_image_binocular_zmq(session))
+        task = asyncio.create_task(getattr(tv, method)(session))
         gaps = []
         start = previous = time.monotonic()
         try:
