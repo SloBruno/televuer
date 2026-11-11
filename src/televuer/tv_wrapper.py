@@ -209,6 +209,8 @@ class TeleData:
     right_hand_squeezeValue: float = 0.0   # (0.0 → 1.0) degree of hand squeeze
 
     motion_data_ready: bool = False        # True after the first hand or controller motion data event is received
+    head_pose_sample_timestamp: float = 0.0  # monotonic receipt time of head_pose; 0.0 when fallback/never received
+    head_pose_is_fallback: bool = True       # True when CONST_HEAD_POSE substituted missing/invalid input
     hand_sample_timestamp: float = 0.0        # monotonic timestamp of latest hand wrist-pose pair
     controller_sample_timestamp: float = 0.0  # monotonic timestamp of latest controller sample
     # controller tracking
@@ -330,7 +332,14 @@ class TeleVuerWrapper:
         # └───────────────────────────────────┴─────────────────────┘
 
         # TeleVuer (Vuer) obtains all raw data under the (basis) OpenXR Convention.
-        Bxr_world_head, head_pose_is_valid = safe_mat_update(CONST_HEAD_POSE, self.tvuer.head_pose)
+        head_sample = getattr(self.tvuer, "head_pose_sample", None)
+        if head_sample is None:
+            raw_head_pose, head_pose_sample_timestamp = self.tvuer.head_pose, 0.0
+        else:
+            raw_head_pose, head_pose_sample_timestamp = head_sample
+        Bxr_world_head, head_pose_is_valid = safe_mat_update(CONST_HEAD_POSE, raw_head_pose)
+        if not head_pose_is_valid:
+            head_pose_sample_timestamp = 0.0
         (
             left_hand_pose_for_retargeting,
             right_hand_pose_for_retargeting,
@@ -444,6 +453,8 @@ class TeleVuerWrapper:
                 right_Brobot_arm_hand_rot = None
             return TeleData(
                 head_pose=Brobot_world_head,
+                head_pose_sample_timestamp=float(head_pose_sample_timestamp),
+                head_pose_is_fallback=not head_pose_is_valid,
                 left_wrist_pose=left_IPunitree_Brobot_waist_arm,
                 right_wrist_pose=right_IPunitree_Brobot_waist_arm,
                 left_hand_pos=left_IPunitree_Brobot_arm_hand_pos,
@@ -505,6 +516,8 @@ class TeleVuerWrapper:
             )
             return TeleData(
                 head_pose=Brobot_world_head,
+                head_pose_sample_timestamp=float(head_pose_sample_timestamp),
+                head_pose_is_fallback=not head_pose_is_valid,
                 left_wrist_pose=left_IPunitree_Brobot_waist_arm,
                 right_wrist_pose=right_IPunitree_Brobot_waist_arm,
                 motion_data_ready=self.tvuer.motion_data_ready,

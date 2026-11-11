@@ -11,6 +11,12 @@ from .hand_pose_sample import (
     read_hand_pose_sample,
     write_hand_pose_sample,
 )
+from .head_pose_sample import (
+    HEAD_POSE_SAMPLE_SIZE,
+    extract_event_matrix,
+    read_head_pose_sample,
+    write_head_pose_sample,
+)
 from multiprocessing import Value, Array, Process, shared_memory
 import numpy as np
 import asyncio
@@ -116,6 +122,8 @@ class TeleVuer:
 
         self.vuer = Vuer(host='0.0.0.0', cert=cert_file, key=key_file, queries=dict(grid=False), queue_len=3)
         self.vuer.add_handler("CAMERA_MOVE")(self.on_cam_move)
+        # Passive receiver only: no scene element is added for it here.
+        self.vuer.add_handler("HEAD_MOVE")(self.on_cam_move)
         # Controller buttons remain available while hand tracking drives the robot.
         self.vuer.add_handler("CONTROLLER_MOVE")(self.on_controller_move)
         if self.use_hand_tracking:
@@ -163,7 +171,9 @@ class TeleVuer:
         
         self.vuer.spawn(start=False)(fn)
 
-        self.head_pose_shared = Array('d', 16, lock=True)
+        # [4x4 column-major head pose, monotonic receipt time] as one atomic
+        # sample; invalid events never advance the timestamp.
+        self.head_pose_sample_shared = Array('d', HEAD_POSE_SAMPLE_SIZE, lock=True)
         # Keep hand-skeleton and controller pose streams separate. In mixed
         # mode both events arrive, and sharing one buffer makes the arm target
         # depend on whichever browser event happened last.
@@ -271,10 +281,14 @@ class TeleVuer:
                 pass
 
     async def on_cam_move(self, event, session, fps=60):
+        """CAMERA_MOVE ({camera:{matrix}} or {matrix}) and HEAD_MOVE ({matrix})."""
         try:
-            with self.head_pose_shared.get_lock():
-                self.head_pose_shared[:] = event.value["camera"]["matrix"]
-        except:
+            write_head_pose_sample(
+                self.head_pose_sample_shared,
+                extract_event_matrix(getattr(event, "value", None)),
+                time.monotonic(),
+            )
+        except Exception:
             pass
 
     async def on_controller_move(self, event, session, fps=60):
@@ -832,8 +846,12 @@ class TeleVuer:
     @property
     def head_pose(self):
         """np.ndarray, shape (4, 4), head SE(3) pose matrix from Vuer (basis OpenXR Convention)."""
-        with self.head_pose_shared.get_lock():
-            return np.array(self.head_pose_shared[:]).reshape(4, 4, order="F")
+        return read_head_pose_sample(self.head_pose_sample_shared)[0]
+
+    @property
+    def head_pose_sample(self):
+        """Atomic (head pose, monotonic receipt timestamp); timestamp 0.0 = never received."""
+        return read_head_pose_sample(self.head_pose_sample_shared)
 
     @property
     def hand_pose_sample(self):

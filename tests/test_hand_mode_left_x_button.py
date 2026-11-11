@@ -46,3 +46,38 @@ def _wrapper_with_left_x_pressed():
 def test_hand_tracking_mode_forwards_left_x_button_to_teledata():
     data = _wrapper_with_left_x_pressed().get_tele_data()
     assert data.left_ctrl_aButton is True
+
+
+def _yaw_xr(yaw):
+    pose = np.eye(4)
+    c, s = np.cos(yaw), np.sin(yaw)
+    pose[:3, :3] = [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]]
+    pose[:3, 3] = (0.0, 1.6, 0.0)
+    return pose
+
+
+def test_head_sample_timestamp_is_forwarded_atomically_in_both_modes():
+    for hand in (True, False):
+        wrapper = _wrapper_with_left_x_pressed()
+        wrapper.use_hand_tracking = hand
+        for side in ("left", "right"):
+            setattr(wrapper.tvuer, f"{side}_ctrl_squeeze", False)
+            setattr(wrapper.tvuer, f"{side}_ctrl_squeezeValue", 0.0)
+        wrapper.tvuer.head_pose_sample = (_yaw_xr(0.3), 42.0)
+        data = wrapper.get_tele_data()
+        assert data.head_pose_sample_timestamp == 42.0
+        assert data.head_pose_is_fallback is False
+        # Robot convention: OpenXR yaw about +Y becomes yaw about +Z (CCW from above).
+        forward = data.head_pose[:3, 0]
+        assert np.isclose(np.arctan2(forward[1], forward[0]), 0.3)
+
+
+def test_missing_or_singular_head_sample_is_never_fresh():
+    wrapper = _wrapper_with_left_x_pressed()
+    wrapper.tvuer.head_pose_sample = (np.zeros((4, 4)), 42.0)
+    data = wrapper.get_tele_data()
+    assert data.head_pose_is_fallback is True
+    assert data.head_pose_sample_timestamp == 0.0
+    legacy = _wrapper_with_left_x_pressed()  # fake without head_pose_sample
+    data = legacy.get_tele_data()
+    assert data.head_pose_sample_timestamp == 0.0
